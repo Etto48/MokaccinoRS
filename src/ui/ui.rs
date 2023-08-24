@@ -1,10 +1,27 @@
 use std::collections::HashMap;
 
-use eframe::{egui::{self, Margin, Frame, Label, ScrollArea, Button, TextEdit, CentralPanel, Key, Ui}, epaint::{Vec2, Color32}};
+use eframe::{egui::{self, Margin, Frame, Label, ScrollArea, Button, TextEdit, CentralPanel, Key, Ui}, epaint::{Vec2, Color32}, NativeOptions, IconData};
 
 use crate::network::ContactInfo;
 
 use super::{MessageInfo, MessageDirection};
+
+pub fn run()
+{
+    let options = NativeOptions{
+        initial_window_size: Some(Vec2::new(800.0, 500.0)),
+        min_window_size: Some(Vec2::new(400.0, 300.0)),
+        icon_data: Some(super::load_icon::load_icon()),
+        ..Default::default()
+    };
+    if let Err(e) = eframe::run_native(
+        "Mokaccino",
+        options, 
+        Box::new(|_cc| Box::<UI>::default()))
+    {
+        panic!("Error starting GUI: {}", e)
+    }
+}
 
 pub struct UI
 {
