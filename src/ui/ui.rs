@@ -1,10 +1,8 @@
 use std::collections::HashMap;
 
-use eframe::{egui::{self, Margin, Frame, Label, ScrollArea, Button, TextEdit, CentralPanel, Key, Ui}, epaint::{Vec2, Color32}, NativeOptions, IconData};
+use eframe::{egui::{self, Margin, Frame, Label, ScrollArea, Button, TextEdit, CentralPanel, Key, Ui}, epaint::{Vec2, Color32}, NativeOptions};
 
-use crate::network::ContactInfo;
-
-use super::{MessageInfo, MessageDirection};
+use super::{MessageInfo, MessageDirection, ContactInfo};
 
 pub fn run()
 {
