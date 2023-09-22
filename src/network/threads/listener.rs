@@ -1,11 +1,11 @@
-use std::{net::{UdpSocket, SocketAddr}, sync::{Arc, mpsc::Sender, RwLock, Mutex}};
+use std::{net::{UdpSocket, SocketAddr}, sync::{Arc, mpsc::Sender, RwLock}};
 
-use crate::{network::{Packet, Serializable, Content, connection_list::ConnectionList}, config::config::Config, log::{log::Log, logger::Logger, message_kind::MessageKind}};
+use crate::{network::{Packet, Serializable, Content, connection_list::ConnectionList}, config::config::Config, log::{logger::Logger, message_kind::MessageKind}};
 
 pub fn run(
     running: Arc<RwLock<bool>>,
     socket: Arc<UdpSocket>,
-    connection_list: Arc<RwLock<ConnectionList>>,
+    _connection_list: Arc<RwLock<ConnectionList>>,
     log: Logger,
     text_queue: Sender<(Packet,SocketAddr)>, 
     connection_queue: Sender<(Packet,SocketAddr)>,
@@ -59,7 +59,8 @@ pub fn run(
             },
             Err(e) => {
                 match e.kind() {
-                    std::io::ErrorKind::TimedOut => {}
+                    std::io::ErrorKind::TimedOut |
+                    std::io::ErrorKind::WouldBlock => {}
                     e => {println!("Error receiving from socket: {e}");}
                 }
             }
