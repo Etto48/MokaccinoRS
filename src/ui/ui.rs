@@ -1,10 +1,19 @@
-use std::collections::HashMap;
+use std::sync::{Arc, RwLock, mpsc::Sender, Mutex};
 
+use chrono::{Local, DateTime};
 use eframe::{egui::{self, Margin, Frame, Label, ScrollArea, Button, TextEdit, CentralPanel, Key, Ui}, epaint::{Vec2, Color32}, NativeOptions};
 
-use super::{MessageInfo, MessageDirection, ContactInfo};
+use crate::{network::{connection_list::ConnectionList, connection_request::ConnectionRequest}, text::{text_list::TextList, text_request::TextRequest, text_info::TextDirection}, thread::context::UnmovableContext, log::{logger::Logger, message_kind::MessageKind}, config::defines};
 
-pub fn run()
+pub fn run(
+    connection_list: Arc<RwLock<ConnectionList>>,
+    text_list: Arc<RwLock<TextList>>,
+    log: Logger,
+    connection_requests: Sender<ConnectionRequest>,
+    text_requests: Sender<TextRequest>,
+
+    unmovable_context: UnmovableContext
+)
 {
     let options = NativeOptions{
         initial_window_size: Some(Vec2::new(800.0, 500.0)),
@@ -15,7 +24,15 @@ pub fn run()
     if let Err(e) = eframe::run_native(
         "Mokaccino",
         options, 
-        Box::new(|_cc| Box::<UI>::default()))
+        Box::new(|_cc| Box::new(UI::new(
+            connection_list,
+            text_list,
+            log,
+            connection_requests,
+            text_requests,
+
+            unmovable_context,
+        ))))
     {
         panic!("Error starting GUI: {}", e)
     }
@@ -24,24 +41,37 @@ pub fn run()
 pub struct UI
 {
     input_buffer: String,
-    messages: HashMap<ContactInfo,Vec<MessageInfo>>,
-    active_contact: Option<ContactInfo>,
+    active_contact: Option<String>,
+
+    connection_list: Arc<RwLock<ConnectionList>>,
+    text_list: Arc<RwLock<TextList>>,
+    log: Logger,
+    connection_requests: Sender<ConnectionRequest>,
+    text_requests: Sender<TextRequest>,
+
+    unmovable_context: UnmovableContext,
 }
 
-impl Default for UI
+impl UI
 {
-    fn default() -> Self {
-        let system = ContactInfo::new("System");
-        let messages = HashMap::from_iter(
-            [
-                (system.clone(),vec![MessageInfo::new("Welcome to Mokaccino!",MessageDirection::Incoming)]),
-                (ContactInfo::new("Pino"),vec![])
-            ],
-        );
+    pub fn new(
+        connection_list: Arc<RwLock<ConnectionList>>,
+        text_list: Arc<RwLock<TextList>>,
+        log: Logger,
+        connection_requests: Sender<ConnectionRequest>,
+        text_requests: Sender<TextRequest>,
+        unmovable_context: UnmovableContext,
+    ) -> Self
+    {
         Self { 
             input_buffer: String::new(), 
-            messages, 
-            active_contact: Some(system), 
+            active_contact: None, 
+            connection_list, 
+            text_list, 
+            log,
+            connection_requests, 
+            text_requests,
+            unmovable_context,
         }
     }
 }
@@ -74,23 +104,32 @@ impl eframe::App for UI
                     .auto_shrink([false;2])
                     .show(ui, |ui|{
                         ui.vertical(|ui|{
-                            let mut contacts = self.messages.keys().collect::<Vec<&ContactInfo>>();
+                            let mut contacts = 
+                            {
+                                let connection_list = self.connection_list.read().expect("I sure hope there is no poisoning here");
+                                let mut contacts = connection_list.get_names();
+                                contacts
+                            };
                             contacts.sort_by(|c1,c2|{
-                                if c1.name() == "System"
-                                {
-                                    std::cmp::Ordering::Less
-                                }
-                                else if c2.name() == "System" 
-                                {
-                                    std::cmp::Ordering::Greater
-                                }
-                                else {
-                                    c1.name().cmp(c2.name())    
-                                }
+                                c1.cmp(c2)    
                             });
+                            { // add system button
+                                let mut button = Button::new("System");
+                                if self.active_contact == None
+                                {
+                                    button = button.fill(selected_color);
+                                }
+                                if ui.add_sized(
+                                    Vec2::new(ui.available_width(),20.0), 
+                                    button).clicked()
+                                {
+                                    println!("System selected");
+                                    self.active_contact = None;
+                                }
+                            }
                             for c in contacts
                             {
-                                let mut button = Button::new(c.name());
+                                let mut button = Button::new(&c);
                                 if self.active_contact == Some(c.clone())
                                 {
                                     button = button.fill(selected_color);
@@ -99,7 +138,7 @@ impl eframe::App for UI
                                     Vec2::new(ui.available_width(),20.0), 
                                     button).clicked()
                                 {
-                                    println!("{} selected",c.name());
+                                    println!("{} selected",c);
                                     self.active_contact = Some(c.clone());
                                 }
                             }
@@ -118,28 +157,48 @@ impl eframe::App for UI
                             //chat
                             if let Some(c) = &self.active_contact
                             {
-                                if let Some(messages) = self.messages.get(c)
+                                let text_list = self.text_list.read().expect("I sure hope there is no poisoning here");
+                                if let Some(messages) = text_list.get(c)
                                 {
                                     for m in messages
                                     {    
                                         ui.horizontal(|ui|{
                                             
                                             ui.label(format!("{}:",
-                                            if m.direction() == MessageDirection::Incoming
+                                            if m.direction == TextDirection::Incoming
                                             {
-                                                c.name()
+                                                c
                                             }
                                             else
                                             {
                                                 "You"
                                             }));
-                                            ui.add(Label::new(m.text()).wrap(true));
+                                            ui.add(Label::new(m.text.clone()).wrap(true));
                                         });
                                     }
                                 }
-                                else {
-                                    //the active contact was removed from the list of contacts
-                                    self.active_contact = None;
+                            }
+                            else
+                            {
+                                let messages = self.log.get().unwrap();
+                                for m in messages
+                                {
+                                    ui.horizontal(|ui|{
+                                        let time_string = DateTime::<Local>::from(m.time).format("%H:%M:%S").to_string();
+                                        let color = match m.kind
+                                        {
+                                            MessageKind::Event => defines::LOG_EVENT_COLOR,
+                                            MessageKind::Command => defines::LOG_COMMAND_COLOR,
+                                            MessageKind::Error => defines::LOG_ERROR_COLOR, 
+                                        };
+                                        let text = match m.kind {
+                                            MessageKind::Command =>  format!("{} ({}) Command:",time_string,m.src),
+                                            MessageKind::Event =>  format!("{} ({}):",time_string,m.src),
+                                            MessageKind::Error =>  format!("{} ({}) Error:",time_string,m.src),
+                                        };
+                                        ui.colored_label(color,text);
+                                        ui.add(Label::new(m.text.clone()).wrap(true));
+                                    });
                                 }
                             }
                         });
@@ -150,23 +209,11 @@ impl eframe::App for UI
                         ui.horizontal(|ui|{
                             //text input
                             //press button enter if enter key is pressed with text input focused
-                            let mut send_enabled = true;
                             let text_hint = 
-                            if let Some(c) = &self.active_contact
-                            {
-                                if c.name() == "System"
-                                {
-                                    "Type a command"
-                                }
-                                else {
-                                    "Type a message"
-                                }
-                            }
-                            else 
-                            {
-                                send_enabled = false;
-                                "No active contact"
-                            };
+                                if let Some(c) = &self.active_contact
+                                {"Type a message"}
+                                else 
+                                {"Type a command"};
 
                             let text_edit = ui.add_sized(
                                 Vec2::new(
@@ -175,7 +222,7 @@ impl eframe::App for UI
                                 TextEdit::singleline(&mut self.input_buffer)
                                 .hint_text(text_hint));
                             
-                            if (ui.add_enabled(send_enabled, |ui: &mut Ui|{
+                            if (ui.add(|ui: &mut Ui|{
                                 ui.add_sized(
                                 Vec2::new(ui.available_width(),ui.available_height()), 
                                 Button::new("Send"))}).clicked() 
@@ -185,20 +232,23 @@ impl eframe::App for UI
                             {
                                 if let Some(c) = &self.active_contact
                                 {
-                                    if c.name() == "System"
+                                    println!("Sent message: {}",self.input_buffer);
+                                    let is_connected = {
+                                        let connection_list = self.connection_list.read().expect("I sure hope there is no poisoning here");
+                                        connection_list.get_address(c).is_some()
+                                    };
+                                    if is_connected
                                     {
-                                        println!("Sent command: {}",self.input_buffer);
+                                        self.text_requests.send(TextRequest { text: self.input_buffer.clone(), dst: c.clone() }).expect("Please don't crush now");
                                     }
-                                    else 
-                                    {    
-                                        println!("Sent message: {}",self.input_buffer);
-                                    }
-                                    if let Some(messages) = self.messages.get_mut(c)
-                                    {
-                                        messages.push(MessageInfo::new(
-                                            &self.input_buffer,
-                                            MessageDirection::Outgoing));
-                                    }
+                                }
+                                else
+                                {
+                                    println!("Sent command: {}",self.input_buffer);
+                                    self.log.log(MessageKind::Command,&self.input_buffer).unwrap();
+                                    //todo!("Parse command");
+                                    //CHANGE THIS
+                                    self.connection_requests.send(ConnectionRequest::Connect(self.input_buffer.parse().expect("Pls no"))).expect("Please don't crush now");
                                 }
                                 self.input_buffer.clear();
                                 //set focus to text input
@@ -209,5 +259,9 @@ impl eframe::App for UI
                 });
             });
         });
+    }
+
+    fn on_exit(&mut self, _gl: Option<&eframe::glow::Context>) {
+        self.unmovable_context.stop();
     }
 }

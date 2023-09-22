@@ -1,10 +1,12 @@
-use std::{thread::JoinHandle, sync::{mpsc::{Receiver, Sender}, Arc, RwLock}, net::SocketAddr};
+use std::{thread::JoinHandle, sync::{mpsc::{Receiver, Sender}, Arc, RwLock, Mutex}, net::SocketAddr};
 
-use crate::{config::config::Config, network::{Packet, threads::connection, Content, connection_list::ConnectionList}};
+use crate::{config::config::Config, network::{Packet, threads::connection, Content, connection_list::ConnectionList, connection_request::ConnectionRequest}, log::{log::Log, logger::Logger}};
 
 pub fn start(
     running: Arc<RwLock<bool>>,
     connection_list: Arc<RwLock<ConnectionList>>,
+    log: Logger,
+    requests: Receiver<ConnectionRequest>,
     connection_queue: Receiver<(Packet,SocketAddr)>,
     sender_queue: Sender<(Content,SocketAddr)>,
     config: Arc<RwLock<Config>>
@@ -15,6 +17,8 @@ pub fn start(
         connection::run(
             running, 
             connection_list, 
+            log,
+            requests,
             connection_queue,
             sender_queue,
             config)
@@ -38,13 +42,15 @@ mod tests
         let handles = start(
             context.unmovable.running.clone(),
             context.movable.connection_list.clone(),
+            context.movable.log.clone(),
+            context.movable.connection_requests_rx,
             context.movable.connection_queue_rx,
-            context.movable.sender_queue.clone(),
+            context.movable.sender_queue_tx.clone(),
             context.unmovable.config.clone());
         assert_eq!(handles.len(),1);
         let remote_address = "0.0.0.0:4848".parse().unwrap();
         let remote_contact_info = ContactInfo::new("Test");
-        context.movable.connection_queue.send(
+        context.movable.connection_queue_tx.send(
             (
                 Packet::from_content_now(Content::RequestConnection(remote_contact_info.clone())),
                 remote_address
@@ -60,7 +66,7 @@ mod tests
         else {
             panic!("Connection timed out");
         }
-        context.movable.connection_queue.send((
+        context.movable.connection_queue_tx.send((
             Packet::from_content_now(Content::AcknowledgeConnection),
             remote_address
         )).unwrap();

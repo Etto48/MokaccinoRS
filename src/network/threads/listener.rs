@@ -1,11 +1,12 @@
-use std::{net::{UdpSocket, SocketAddr}, sync::{Arc, mpsc::Sender, RwLock}};
+use std::{net::{UdpSocket, SocketAddr}, sync::{Arc, mpsc::Sender, RwLock, Mutex}};
 
-use crate::{network::{Packet, Serializable, Content, connection_list::ConnectionList}, config::config::Config};
+use crate::{network::{Packet, Serializable, Content, connection_list::ConnectionList}, config::config::Config, log::{log::Log, logger::Logger}};
 
 pub fn run(
     running: Arc<RwLock<bool>>,
     socket: Arc<UdpSocket>,
     connection_list: Arc<RwLock<ConnectionList>>,
+    log: Logger,
     text_queue: Sender<(Packet,SocketAddr)>, 
     connection_queue: Sender<(Packet,SocketAddr)>,
     voice_queue: Sender<(Packet,SocketAddr)>,
@@ -35,7 +36,8 @@ pub fn run(
                 }
                 println!("Received packet from: {from} ({packet_size}B) content: {packet:?}");
                 let queue = match &packet.content {
-                    Content::Text(_) => {
+                    Content::Text(_,_) |
+                    Content::AcknowledgeText(_,_) => {
                         &text_queue
                     },
                     Content::Ping |

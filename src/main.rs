@@ -11,9 +11,10 @@ fn main() {
     threads.extend(thread::network::start(
         context.unmovable.running.clone(),
         context.movable.connection_list.clone(),
-        context.movable.text_queue, 
-        context.movable.connection_queue, 
-        context.movable.voice_queue, 
+        context.movable.log.clone(),
+        context.movable.text_queue_tx, 
+        context.movable.connection_queue_tx, 
+        context.movable.voice_queue_tx, 
         context.movable.sender_queue_rx, 
         context.unmovable.config.clone()
     ));
@@ -21,29 +22,45 @@ fn main() {
     threads.extend(thread::connection::start(
         context.unmovable.running.clone(),
         context.movable.connection_list.clone(),
+        context.movable.log.clone(),
+        context.movable.connection_requests_rx,
         context.movable.connection_queue_rx, 
-        context.movable.sender_queue.clone(), 
+        context.movable.sender_queue_tx.clone(), 
         context.unmovable.config.clone()
     ));
 
     threads.extend(thread::text::start(
         context.unmovable.running.clone(),
+        context.movable.text_list.clone(),
         context.movable.connection_list.clone(),
-        context.movable.text_queue_rx, 
+        context.movable.log.clone(),
+        context.movable.text_requests_rx,
+        context.movable.text_queue_rx,
+        context.movable.sender_queue_tx.clone(),
         context.unmovable.config.clone()
     ));
 
     threads.extend(thread::voice::start(
         context.unmovable.running.clone(),
-        context.movable.connection_list,
+        context.movable.connection_list.clone(),
+        context.movable.log.clone(),
         context.movable.voice_queue_rx, 
-        context.movable.sender_queue, 
+        context.movable.sender_queue_tx, 
         context.unmovable.config.clone()
     ));
 
-    ui::run();
+    // gui loop
+    ui::run(
+        context.movable.connection_list,
+        context.movable.text_list,
+        context.movable.log,
+        context.movable.connection_requests_tx,
+        context.movable.text_requests_tx,
+        
+        context.unmovable,
+    );
 
-    context.unmovable.stop();
+    // join all threads and check for errors
     let mut success = true;
     'thread_loop: for thread in threads {
         let thread_name = thread.thread().name().unwrap_or("unnamed").to_string();
@@ -55,7 +72,6 @@ fn main() {
                 success = false;
                 continue 'thread_loop;
             }
-            //wait 100ms 
             println!("Waiting for thread {thread_name} to finish ({}/{})",join_tries+1, defines::MAX_THREAD_JOIN_TRIES);
             std::thread::sleep(defines::THREAD_QUEUE_TIMEOUT);
             join_tries += 1;

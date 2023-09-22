@@ -12,6 +12,10 @@ cpal = "0.15.2"
 eframe = "0.22.0"
 # image processing
 image = "0.24.7"
+# time formatting ect.
+chrono = "0.4.31"
+# random number generation
+rand = "0.8.5"
 # serialization
 serde = { version = "1.0.188", features = ["derive"] }
 # toml serialization

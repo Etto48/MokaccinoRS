@@ -1,11 +1,12 @@
-use std::{net::{UdpSocket, SocketAddr}, sync::{Arc, mpsc::Receiver, RwLock}};
+use std::{net::{UdpSocket, SocketAddr}, sync::{Arc, mpsc::Receiver, RwLock, Mutex}};
 
-use crate::{network::{Packet, Serializable, Content, connection_list::ConnectionList}, config::{config::Config, defines}};
+use crate::{network::{Packet, Serializable, Content, connection_list::ConnectionList}, config::{config::Config, defines}, log::{log::Log, logger::Logger}};
 
 pub fn run(
     running: Arc<RwLock<bool>>,
     socket: Arc<UdpSocket>, 
     connection_list: Arc<RwLock<ConnectionList>>,
+    log: Logger,
     queue: Receiver<(Content,SocketAddr)>, 
     config: Arc<RwLock<Config>>) -> Result<(),String>
 {

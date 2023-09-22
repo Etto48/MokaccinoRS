@@ -1,10 +1,12 @@
-use std::{sync::{mpsc::{Sender, Receiver}, Arc, RwLock}, net::SocketAddr, collections::HashMap, time::{Duration, Instant}};
+use std::{sync::{mpsc::{Sender, Receiver}, Arc, RwLock, Mutex}, net::SocketAddr, collections::HashMap, time::{Duration, Instant}};
 
-use crate::{config::{config::Config, defines}, network::{connection_list::ConnectionList, Packet, Content, ContactInfo}};
+use crate::{config::{config::Config, defines}, network::{connection_list::ConnectionList, Packet, Content, ContactInfo, connection_request::ConnectionRequest}, log::{log::Log, logger::Logger, message_kind::MessageKind}};
 
 pub fn run(
     running: Arc<RwLock<bool>>,
     connection_list: Arc<RwLock<ConnectionList>>,
+    log: Logger,
+    requests: Receiver<ConnectionRequest>,
     connection_queue: Receiver<(Packet,SocketAddr)>, 
     sender_queue: Sender<(Content,SocketAddr)>,
     config: Arc<RwLock<Config>>
@@ -81,6 +83,7 @@ pub fn run(
                                         let mut connection_list = connection_list.write().map_err(|e|e.to_string())?;
                                         connection_list.add(contact_info.name(), from);
                                     }
+                                    log.log(MessageKind::Event, &format!("Connection to {} established", contact_info.name()))?;
                                     pending_requests.remove(&from);
                                     sender_queue.send((Content::AcknowledgeConnection, from)).map_err(|e|e.to_string())?;
                                 }
@@ -114,6 +117,7 @@ pub fn run(
                                     let mut connection_list = connection_list.write().map_err(|e|e.to_string())?;
                                     connection_list.add(contact_info.name(), from);
                                 }
+                                log.log(MessageKind::Event, &format!("Connection to {} established", contact_info.name()))?;
                                 pending_requests.remove(&from);
                             }
                             else {
@@ -122,7 +126,7 @@ pub fn run(
                             }
                         }
                     },
-                    _ => {unreachable!("No other content is sent to this thread")}
+                    _ => unreachable!("Connection thread received non-connection packet: {:?}",packet)
                 }
             },
             Err(e) => 
@@ -185,9 +189,9 @@ pub fn run(
                             for address in timed_out_connections
                             {
                                 connection_list.remove_with_address(&address);
+                                log.log(MessageKind::Event, &format!("Connection to {} timed out", address))?;
                             }
                         }
-                        
                     },
                     std::sync::mpsc::RecvTimeoutError::Disconnected => 
                     {
@@ -198,7 +202,42 @@ pub fn run(
                     }
                 }
             },
-        }  
+        }
+        // check if there are any new connection-related requests
+        match requests.try_recv()  
+        {
+            Ok(request) => 
+            {
+                match request
+                {
+                    ConnectionRequest::Connect(to) => 
+                    {
+                        let config = config.read().map_err(|e|e.to_string())?.clone();
+                        sender_queue.send((Content::request_connection_from_config(&config), to)).map_err(|e|e.to_string())?;
+                        pending_requests.insert(to, (None,Instant::now(),0));
+                    },
+                    ConnectionRequest::Disconnect(from) => 
+                    {
+                        let mut connection_list = connection_list.write().map_err(|e|e.to_string())?;
+                        connection_list.remove_with_name(&from);
+                    },
+                }
+            },
+            Err(e) => 
+            {
+                match e
+                {
+                    std::sync::mpsc::TryRecvError::Empty => {},
+                    std::sync::mpsc::TryRecvError::Disconnected => 
+                    {
+                        return if !running.read().map_err(|e|e.to_string())?.clone()
+                        {Ok(())}
+                        else
+                        {Err("Connection channel broken".to_string())}
+                    },
+                }
+            },
+        }
     }
     Ok(())
 }

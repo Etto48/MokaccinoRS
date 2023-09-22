@@ -1,11 +1,12 @@
-use std::{thread::JoinHandle, sync::{Arc, mpsc::{Sender, Receiver}, RwLock}, net::SocketAddr};
+use std::{thread::JoinHandle, sync::{Arc, mpsc::{Sender, Receiver}, RwLock, Mutex}, net::SocketAddr};
 
-use crate::{network::{socket, threads::listener, threads::sender, Packet, Content, connection_list::ConnectionList}, config::config::Config};
+use crate::{network::{socket, threads::listener, threads::sender, Packet, Content, connection_list::ConnectionList}, config::config::Config, log::{log::Log, logger::Logger}};
 
 pub fn start(
     running: Arc<RwLock<bool>>,
 
     connection_list: Arc<RwLock<ConnectionList>>,
+    log: Logger,
 
     text_queue: Sender<(Packet,SocketAddr)>,
     connection_queue: Sender<(Packet,SocketAddr)>,
@@ -35,11 +36,14 @@ pub fn start(
     let sender_connection_list = connection_list.clone();
     let listener_running = running.clone();
     let sender_running = running.clone();
+    let listener_log = log.clone();
+    let sender_log = log.clone();
     let listener = match listener_builder.spawn(move || {
         listener::run(
             listener_running, 
             listener_socket, 
             listener_connection_list, 
+            listener_log,
             text_queue, 
             connection_queue, 
             voice_queue, 
@@ -54,6 +58,7 @@ pub fn start(
             sender_running,
             sender_socket, 
             sender_connection_list, 
+            sender_log,
             sender_queue, 
             sender_config)
     })

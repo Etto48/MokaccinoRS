@@ -1,10 +1,11 @@
 use std::{sync::{mpsc::{Receiver, Sender, RecvTimeoutError}, Arc, RwLock}, net::SocketAddr};
 
-use crate::{network::{Packet, Content, connection_list::ConnectionList}, config::{config::Config, defines}};
+use crate::{network::{Packet, Content, connection_list::ConnectionList}, config::{config::Config, defines}, log::logger::Logger};
 
 pub fn run(
     running: Arc<RwLock<bool>>,
     connection_list: Arc<RwLock<ConnectionList>>,
+    log: Logger,
     voice_queue: Receiver<(Packet,SocketAddr)>, 
     sender_queue: Sender<(Content,SocketAddr)>,
     config: Arc<RwLock<Config>>) -> Result<(),String>

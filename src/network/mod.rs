@@ -2,6 +2,7 @@ pub mod threads;
 pub mod contact_info;
 pub mod connection_list;
 pub mod connection_info;
+pub mod connection_request;
 pub mod socket;
 pub mod packet;
 pub mod content;

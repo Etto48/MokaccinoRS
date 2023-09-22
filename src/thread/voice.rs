@@ -1,10 +1,11 @@
-use std::{thread::JoinHandle, sync::{mpsc::{Receiver, Sender}, Arc, RwLock}, net::SocketAddr};
+use std::{thread::JoinHandle, sync::{mpsc::{Receiver, Sender}, Arc, RwLock, Mutex}, net::SocketAddr};
 
-use crate::{voice::threads::voice, network::{Packet, Content, connection_list::ConnectionList}, config::config::Config};
+use crate::{voice::threads::voice, network::{Packet, Content, connection_list::ConnectionList}, config::config::Config, log::{log::Log, logger::Logger}};
 
 pub fn start(
     running: Arc<RwLock<bool>>,
     connection_list: Arc<RwLock<ConnectionList>>,
+    log: Logger,
     voice_queue: Receiver<(Packet,SocketAddr)>, 
     sender_queue: Sender<(Content,SocketAddr)>,
     config: Arc<RwLock<Config>>) -> Vec<JoinHandle<Result<(),String>>>
@@ -14,6 +15,7 @@ pub fn start(
         voice::run(
             running, 
             connection_list, 
+            log,
             voice_queue, 
             sender_queue, 
             config)
