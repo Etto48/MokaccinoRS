@@ -72,7 +72,8 @@ fn main() {
                 success = false;
                 continue 'thread_loop;
             }
-            println!("Waiting for thread {thread_name} to finish ({}/{})",join_tries+1, defines::MAX_THREAD_JOIN_TRIES);
+            if join_tries == 0 
+            {println!("Waiting for thread {thread_name} to finish");}
             std::thread::sleep(defines::THREAD_QUEUE_TIMEOUT);
             join_tries += 1;
         }

@@ -1,4 +1,5 @@
 pub mod ui;
+pub mod updater;
 pub mod load_icon;
 
 pub use ui::UI;

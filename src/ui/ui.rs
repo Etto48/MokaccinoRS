@@ -1,9 +1,11 @@
-use std::sync::{Arc, RwLock, mpsc::Sender, Mutex};
+use std::{sync::{Arc, RwLock, mpsc::Sender, Mutex}, time::Duration};
 
 use chrono::{Local, DateTime};
 use eframe::{egui::{self, Margin, Frame, Label, ScrollArea, Button, TextEdit, CentralPanel, Key, Ui}, epaint::{Vec2, Color32}, NativeOptions};
 
 use crate::{network::{connection_list::ConnectionList, connection_request::ConnectionRequest}, text::{text_list::TextList, text_request::TextRequest, text_info::TextDirection}, thread::context::UnmovableContext, log::{logger::Logger, message_kind::MessageKind}, config::defines};
+
+use super::updater;
 
 pub fn run(
     connection_list: Arc<RwLock<ConnectionList>>,
@@ -24,7 +26,7 @@ pub fn run(
     if let Err(e) = eframe::run_native(
         "Mokaccino",
         options, 
-        Box::new(|_cc| Box::new(UI::new(
+        Box::new(|cc| Box::new(UI::new(
             connection_list,
             text_list,
             log,
@@ -32,6 +34,7 @@ pub fn run(
             text_requests,
 
             unmovable_context,
+            cc,
         ))))
     {
         panic!("Error starting GUI: {}", e)
@@ -61,8 +64,16 @@ impl UI
         connection_requests: Sender<ConnectionRequest>,
         text_requests: Sender<TextRequest>,
         unmovable_context: UnmovableContext,
+        cc: &eframe::CreationContext<'_>
     ) -> Self
     {
+        let ctx = cc.egui_ctx.clone();
+        let running_clone = unmovable_context.running.clone();
+        let handle = std::thread::spawn(move ||
+        {
+            updater::run(ctx,running_clone);
+        });
+        
         Self { 
             input_buffer: String::new(), 
             active_contact: None, 
@@ -107,8 +118,7 @@ impl eframe::App for UI
                             let mut contacts = 
                             {
                                 let connection_list = self.connection_list.read().expect("I sure hope there is no poisoning here");
-                                let mut contacts = connection_list.get_names();
-                                contacts
+                                connection_list.get_names()
                             };
                             contacts.sort_by(|c1,c2|{
                                 c1.cmp(c2)    
@@ -262,6 +272,6 @@ impl eframe::App for UI
     }
 
     fn on_exit(&mut self, _gl: Option<&eframe::glow::Context>) {
-        self.unmovable_context.stop();
+        *self.unmovable_context.running.write().unwrap() = false;
     }
 }

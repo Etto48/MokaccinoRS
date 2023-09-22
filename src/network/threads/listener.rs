@@ -60,7 +60,7 @@ pub fn run(
             Err(e) => {
                 match e.kind() {
                     std::io::ErrorKind::TimedOut => {}
-                    _ => {println!("Error receiving from socket");}
+                    e => {println!("Error receiving from socket: {e}");}
                 }
             }
         }
