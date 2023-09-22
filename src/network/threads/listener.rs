@@ -1,6 +1,6 @@
 use std::{net::{UdpSocket, SocketAddr}, sync::{Arc, mpsc::Sender, RwLock, Mutex}};
 
-use crate::{network::{Packet, Serializable, Content, connection_list::ConnectionList}, config::config::Config, log::{log::Log, logger::Logger}};
+use crate::{network::{Packet, Serializable, Content, connection_list::ConnectionList}, config::config::Config, log::{log::Log, logger::Logger, message_kind::MessageKind}};
 
 pub fn run(
     running: Arc<RwLock<bool>>,
@@ -25,16 +25,16 @@ pub fn run(
                     Ok(p) => p,
                     Err(e) => 
                     {
-                        println!("Error deserializing packet: {}",e);
+                        log.log(MessageKind::Error, &format!("Error deserializing packet: {}",e))?;
                         continue;
                     }
                 };
                 if packet_size != len
                 {
-                    println!("Packet size mismatch: {} != {}",packet_size,len);
+                    log.log(MessageKind::Error, &format!("Packet size mismatch: {} != {}",packet_size,len))?;
                     continue;
                 }
-                println!("Received packet from: {from} ({packet_size}B) content: {packet:?}");
+                log.log(MessageKind::Event, &format!("Received {:?} from {}", packet, from))?;
                 let queue = match &packet.content {
                     Content::Text(_,_) |
                     Content::AcknowledgeText(_,_) => {

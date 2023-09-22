@@ -46,6 +46,11 @@ pub fn run(
                         let connection_list = connection_list.read().map_err(|e|e.to_string())?;
                         if let Some(name) = connection_list.get_name(&from)
                         {
+                            text_list.write().map_err(|e|e.to_string())?.add(name, 
+                                TextInfo { 
+                                    text: text.clone(), 
+                                    nonce,
+                                    direction: TextDirection::Outgoing });
                             pending_messages.remove(&(name.to_string(),text,nonce));
                         }
                     }

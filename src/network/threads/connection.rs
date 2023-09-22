@@ -141,7 +141,7 @@ pub fn run(
                         {
                             for (address, (_info, last_seen, strikes)) in &mut pending_requests
                             {
-                                if last_seen.elapsed() > Duration::from_secs(config.network.timeout_ms)
+                                if last_seen.elapsed() > Duration::from_millis(config.network.timeout_ms)
                                 {
                                     if *strikes >= config.network.timeout_strikes
                                     {
@@ -169,8 +169,8 @@ pub fn run(
                             let mut connection_list = connection_list.write().map_err(|e|e.to_string())?;
                             for (address, info) in connection_list.get_infos()
                             {
-                                if info.last_seen.elapsed() > Duration::from_secs(config.network.ping_ms) ||
-                                (info.strikes > 0 && info.last_seen.elapsed() > Duration::from_secs(config.network.timeout_ms))
+                                if info.last_seen.elapsed() > Duration::from_millis(config.network.ping_ms) ||
+                                (info.strikes > 0 && info.last_seen.elapsed() > Duration::from_millis(config.network.timeout_ms))
                                 {
                                     if info.strikes >= config.network.timeout_strikes
                                     {

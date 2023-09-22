@@ -123,7 +123,7 @@ impl eframe::App for UI
                                     Vec2::new(ui.available_width(),20.0), 
                                     button).clicked()
                                 {
-                                    println!("System selected");
+                                    // system selected
                                     self.active_contact = None;
                                 }
                             }
@@ -138,7 +138,7 @@ impl eframe::App for UI
                                     Vec2::new(ui.available_width(),20.0), 
                                     button).clicked()
                                 {
-                                    println!("{} selected",c);
+                                    // user selected
                                     self.active_contact = Some(c.clone());
                                 }
                             }
@@ -232,7 +232,7 @@ impl eframe::App for UI
                             {
                                 if let Some(c) = &self.active_contact
                                 {
-                                    println!("Sent message: {}",self.input_buffer);
+                                    // sent a message
                                     let is_connected = {
                                         let connection_list = self.connection_list.read().expect("I sure hope there is no poisoning here");
                                         connection_list.get_address(c).is_some()
@@ -244,7 +244,7 @@ impl eframe::App for UI
                                 }
                                 else
                                 {
-                                    println!("Sent command: {}",self.input_buffer);
+                                    // sent command
                                     self.log.log(MessageKind::Command,&self.input_buffer).unwrap();
                                     //todo!("Parse command");
                                     //CHANGE THIS

@@ -81,11 +81,12 @@ fn main() {
                 println!("Thread {thread_name} exited successfully");
             },
             Ok(Err(e)) => {
-                eprintln!("{}",e);
+                eprintln!("Error occurred in thread {thread_name}: {e}");
                 success = false;
             },
             Err(e) => {
-                let error_string = e.downcast_ref::<&str>().unwrap_or(&"unknown cause");
+                let default_error_string = "unknown cause".to_string();
+                let error_string = e.downcast_ref::<String>().unwrap_or(&default_error_string);
                 eprintln!("Error occurred in thread {thread_name}: {error_string}");
                 success = false;
             }

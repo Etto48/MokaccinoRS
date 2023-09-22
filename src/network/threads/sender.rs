@@ -1,6 +1,6 @@
 use std::{net::{UdpSocket, SocketAddr}, sync::{Arc, mpsc::Receiver, RwLock, Mutex}};
 
-use crate::{network::{Packet, Serializable, Content, connection_list::ConnectionList}, config::{config::Config, defines}, log::{log::Log, logger::Logger}};
+use crate::{network::{Packet, Serializable, Content, connection_list::ConnectionList}, config::{config::Config, defines}, log::{log::Log, logger::Logger, message_kind::MessageKind}};
 
 pub fn run(
     running: Arc<RwLock<bool>>,
@@ -16,6 +16,7 @@ pub fn run(
         {
             Ok((content, dst)) =>
             {
+                log.log(MessageKind::Event, &format!("Sending {:?} to {}",content, dst))?;
                 let packet = Packet::from_content_now(content);
                 let bytes = packet.serialize();
                 socket.send_to(&bytes, dst).map_err(|e|e.to_string())?;

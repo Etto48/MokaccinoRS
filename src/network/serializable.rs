@@ -85,7 +85,6 @@ impl Serializable for String
     fn serialize(&self) -> Vec<u8> {
         let mut vec = Vec::new();
         vec.extend_from_slice(&mut (self.len() as u32).to_be_bytes());
-        vec.extend_from_slice(&self.len().to_be_bytes());
         vec.extend_from_slice(self.as_bytes());
         vec
     }
@@ -230,6 +229,10 @@ impl Serializable for SystemTime
 
     fn deserialize(data: &[u8]) -> std::io::Result<(Self,usize)> {
         let (secs, read) = u64::deserialize(data)?;
-        Ok((SystemTime::UNIX_EPOCH + std::time::Duration::from_secs(secs), read))
+        let ret = SystemTime::UNIX_EPOCH.checked_add(std::time::Duration::from_secs(secs));
+        match ret {
+            Some(time) => Ok((time, read)),
+            None => Err(std::io::Error::new(std::io::ErrorKind::InvalidData, "Invalid time")),
+        }
     }
 }
