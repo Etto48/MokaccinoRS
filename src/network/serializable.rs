@@ -145,6 +145,26 @@ impl <T: Serializable> Serializable for Vec<T>
     }
 }
 
+impl Serializable for u128
+{
+    fn serialize(&self) -> Vec<u8> {
+        self.to_be_bytes().to_vec()
+    }
+
+    fn deserialize(data: &[u8]) -> std::io::Result<(Self,usize)> {
+        if data.len() < 16
+        {
+            Err(std::io::Error::new(std::io::ErrorKind::InvalidData, "Invalid data length"))
+        }
+        else
+        {
+            let ret = u128::from_be_bytes([data[0], data[1], data[2], data[3], data[4], data[5], data[6], data[7],
+                data[8], data[9], data[10], data[11], data[12], data[13], data[14], data[15]]);
+            Ok((ret, 16))
+        }
+    }
+}
+
 impl Serializable for u64
 {
     fn serialize(&self) -> Vec<u8> {

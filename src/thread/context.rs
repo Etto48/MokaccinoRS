@@ -1,6 +1,6 @@
 use std::{sync::{Arc, RwLock, mpsc::{Receiver, Sender}}, net::SocketAddr};
 
-use crate::{network::{connection_list::ConnectionList, Packet, Content, connection_request::ConnectionRequest}, config::config::Config, text::{text_list::TextList, text_request::TextRequest}, log::{logger::Logger}};
+use crate::{network::{connection_list::ConnectionList, Packet, Content, connection_request::ConnectionRequest}, config::config::Config, text::{text_list::TextList, text_request::TextRequest}, log::{logger::Logger, message_kind::MessageKind}};
 
 pub struct Context
 {
@@ -41,6 +41,7 @@ impl Context
 {
     pub fn new(config_path: Option<&str>) -> Self
     { 
+        let log = Logger::new();
         let config = match config_path
         {
             Some(path) =>
@@ -49,11 +50,10 @@ impl Context
                 {
                     Ok(c) => c,
                     Err(e) => {
-                        eprintln!(
-                            "Error reading config:\n\
-                            {}\n\
-                            using default config:\n\
-                            {}",e,toml::to_string(&Config::default()).expect("Default config is serializable"));
+                        log.log(
+                            MessageKind::Error, 
+                            &format!("Error occured while reading config file: {}",e))
+                        .expect("The program is still singlethreaded, so this should never happen");
                         Config::default()
                     }
                 }
@@ -65,7 +65,6 @@ impl Context
 
         let connection_list = Arc::new(RwLock::new(ConnectionList::new()));
         let text_list = Arc::new(RwLock::new(TextList::new()));
-        let log = Logger::new();
 
         let (connection_requests_tx, connection_requests_rx) = std::sync::mpsc::channel::<ConnectionRequest>();
         let (text_requests_tx, text_requests_rx) = std::sync::mpsc::channel::<TextRequest>();
