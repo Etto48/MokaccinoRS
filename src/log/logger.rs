@@ -1,6 +1,6 @@
 use std::{sync::{Arc, Mutex}, collections::LinkedList};
 
-use super::{log::Log, message_kind::MessageKind, log_message::LogMessage};
+use super::{Log, MessageKind, LogMessage};
 
 #[derive(Clone)]
 pub struct Logger

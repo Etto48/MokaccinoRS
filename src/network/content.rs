@@ -1,4 +1,4 @@
-use crate::config::config::Config;
+use crate::config::Config;
 
 use super::{Serializable, ContactInfo};
 

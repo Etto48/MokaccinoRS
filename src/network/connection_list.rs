@@ -1,6 +1,6 @@
 use std::{net::SocketAddr, collections::HashMap};
 
-use super::connection_info::ConnectionInfo;
+use super::ConnectionInfo;
 
 pub struct ConnectionList
 {

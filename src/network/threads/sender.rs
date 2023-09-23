@@ -1,6 +1,6 @@
 use std::{net::{UdpSocket, SocketAddr}, sync::{Arc, mpsc::Receiver, RwLock}};
 
-use crate::{network::{Packet, Serializable, Content, connection_list::ConnectionList}, config::{config::Config, defines}, log::{logger::Logger, message_kind::MessageKind}};
+use crate::{network::{Packet, Serializable, Content, ConnectionList}, config::{Config, defines}, log::{Logger, MessageKind}};
 
 pub fn run(
     running: Arc<RwLock<bool>>,

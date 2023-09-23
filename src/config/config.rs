@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 
-use super::network_config::NetworkConfig;
+use super::NetworkConfig;
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Config
 {

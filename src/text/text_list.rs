@@ -1,6 +1,6 @@
 use std::collections::{HashMap, LinkedList};
 
-use super::{text_info::TextInfo, text_fast_storage::TextFastStorage};
+use super::{TextInfo, TextFastStorage};
 
 pub struct TextList
 {

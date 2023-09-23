@@ -2,7 +2,7 @@ use std::{sync::{mpsc::{Receiver, Sender}, Arc, RwLock}, net::SocketAddr, collec
 
 use rand::RngCore;
 
-use crate::{network::{Packet, connection_list::ConnectionList, Content}, config::{config::Config, defines}, text::{text_list::TextList, text_info::{TextInfo, TextDirection}, text_request::TextRequest}, log::{logger::Logger}};
+use crate::{network::{Packet, ConnectionList, Content}, config::{Config, defines}, text::{TextList, TextInfo, TextDirection, TextRequest}, log::Logger};
 
 pub fn run(
     running: Arc<RwLock<bool>>,

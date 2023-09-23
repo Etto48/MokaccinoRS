@@ -1,6 +1,6 @@
 use std::{sync::{mpsc::{Receiver, Sender, RecvTimeoutError}, Arc, RwLock}, net::SocketAddr};
 
-use crate::{network::{Packet, Content, connection_list::ConnectionList}, config::{config::Config, defines}, log::logger::Logger};
+use crate::{network::{Packet, Content, ConnectionList}, config::{Config, defines}, log::Logger};
 
 pub fn run(
     running: Arc<RwLock<bool>>,

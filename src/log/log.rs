@@ -1,6 +1,6 @@
 use std::collections::LinkedList;
 
-use super::{log_message::LogMessage, message_kind::MessageKind};
+use super::{LogMessage, MessageKind};
 
 pub struct Log
 {

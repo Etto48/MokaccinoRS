@@ -9,6 +9,9 @@ pub mod content;
 pub mod serializable;
 
 pub use contact_info::ContactInfo;
-pub use content::Content;
+pub use connection_list::ConnectionList;
+pub use connection_info::ConnectionInfo;
+pub use connection_request::ConnectionRequest;
 pub use packet::Packet;
+pub use content::Content;
 pub use serializable::Serializable;

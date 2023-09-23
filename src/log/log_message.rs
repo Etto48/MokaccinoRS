@@ -1,6 +1,6 @@
 use std::time::SystemTime;
 
-use super::message_kind::MessageKind;
+use super::MessageKind;
 
 #[derive(Clone)]
 pub struct LogMessage

@@ -3,7 +3,7 @@ use std::{sync::{Arc, RwLock, mpsc::Sender}, time::Duration, net::{SocketAddr, I
 use chrono::{Local, DateTime};
 use eframe::{egui::{self, Margin, Frame, Label, ScrollArea, Button, TextEdit, CentralPanel, Key, Ui}, epaint::{Vec2, Rounding}, NativeOptions, emath::Align2};
 
-use crate::{network::{connection_list::ConnectionList, connection_request::ConnectionRequest}, text::{text_list::TextList, text_request::TextRequest, text_info::TextDirection}, thread::context::UnmovableContext, log::{logger::Logger, message_kind::MessageKind}, config::defines};
+use crate::{network::{ConnectionList, ConnectionRequest}, text::{TextList, TextRequest, TextDirection}, thread::context::UnmovableContext, log::{Logger, MessageKind}, config::defines};
 
 pub fn run(
     connection_list: Arc<RwLock<ConnectionList>>,

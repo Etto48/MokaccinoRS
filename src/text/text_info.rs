@@ -1,9 +1,4 @@
-#[derive(Clone, Eq, PartialEq, Hash)]
-pub enum TextDirection
-{
-    Incoming,
-    Outgoing,
-}
+use super::TextDirection;
 
 #[derive(Clone, Eq, PartialEq, Hash)]
 pub struct TextInfo

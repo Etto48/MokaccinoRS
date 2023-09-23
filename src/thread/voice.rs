@@ -1,6 +1,6 @@
 use std::{thread::JoinHandle, sync::{mpsc::{Receiver, Sender}, Arc, RwLock}, net::SocketAddr};
 
-use crate::{voice::threads::voice, network::{Packet, Content, connection_list::ConnectionList}, config::config::Config, log::{logger::Logger}};
+use crate::{voice::threads::voice, network::{Packet, Content, ConnectionList}, config::Config, log::Logger};
 
 pub fn start(
     running: Arc<RwLock<bool>>,
