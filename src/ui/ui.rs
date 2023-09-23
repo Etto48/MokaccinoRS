@@ -1,11 +1,9 @@
-use std::{sync::{Arc, RwLock, mpsc::Sender, Mutex}, time::Duration};
+use std::{sync::{Arc, RwLock, mpsc::Sender}, time::Duration, net::SocketAddr};
 
 use chrono::{Local, DateTime};
-use eframe::{egui::{self, Margin, Frame, Label, ScrollArea, Button, TextEdit, CentralPanel, Key, Ui}, epaint::{Vec2, Color32}, NativeOptions};
+use eframe::{egui::{self, Margin, Frame, Label, ScrollArea, Button, TextEdit, CentralPanel, Key, Ui}, epaint::Vec2, NativeOptions, emath::Align2};
 
 use crate::{network::{connection_list::ConnectionList, connection_request::ConnectionRequest}, text::{text_list::TextList, text_request::TextRequest, text_info::TextDirection}, thread::context::UnmovableContext, log::{logger::Logger, message_kind::MessageKind}, config::defines};
-
-use super::updater;
 
 pub fn run(
     connection_list: Arc<RwLock<ConnectionList>>,
@@ -14,7 +12,7 @@ pub fn run(
     connection_requests: Sender<ConnectionRequest>,
     text_requests: Sender<TextRequest>,
 
-    unmovable_context: UnmovableContext
+    unmovable_context: UnmovableContext,
 )
 {
     let options = NativeOptions{
@@ -26,15 +24,14 @@ pub fn run(
     if let Err(e) = eframe::run_native(
         "Mokaccino",
         options, 
-        Box::new(|cc| Box::new(UI::new(
+        Box::new(|_cc| Box::new(UI::new(
             connection_list,
             text_list,
             log,
             connection_requests,
             text_requests,
 
-            unmovable_context,
-            cc,
+            unmovable_context
         ))))
     {
         panic!("Error starting GUI: {}", e)
@@ -44,6 +41,9 @@ pub fn run(
 pub struct UI
 {
     input_buffer: String,
+    new_connection_address_buffer: String,
+    new_connection_port_buffer: String,
+
     active_contact: Option<String>,
 
     connection_list: Arc<RwLock<ConnectionList>>,
@@ -53,6 +53,8 @@ pub struct UI
     text_requests: Sender<TextRequest>,
 
     unmovable_context: UnmovableContext,
+
+    show_new_connection_dialog: bool,
 }
 
 impl UI
@@ -64,18 +66,12 @@ impl UI
         connection_requests: Sender<ConnectionRequest>,
         text_requests: Sender<TextRequest>,
         unmovable_context: UnmovableContext,
-        cc: &eframe::CreationContext<'_>
     ) -> Self
-    {
-        let ctx = cc.egui_ctx.clone();
-        let running_clone = unmovable_context.running.clone();
-        let handle = std::thread::spawn(move ||
-        {
-            updater::run(ctx,running_clone);
-        });
-        
+    {   
         Self { 
             input_buffer: String::new(), 
+            new_connection_address_buffer: String::new(),
+            new_connection_port_buffer: String::new(),
             active_contact: None, 
             connection_list, 
             text_list, 
@@ -83,6 +79,7 @@ impl UI
             connection_requests, 
             text_requests,
             unmovable_context,
+            show_new_connection_dialog: false,
         }
     }
 }
@@ -92,7 +89,6 @@ impl eframe::App for UI
     fn update(&mut self, ctx: &egui::Context, frame: &mut eframe::Frame) {
         let margin = 10.0;
         let confirm_button_width = 80.0;
-        let selected_color = Color32::from_rgb(116, 77, 169);
         let size = frame.info().window_info.size;
         CentralPanel::default()
         .frame(Frame{
@@ -127,7 +123,7 @@ impl eframe::App for UI
                                 let mut button = Button::new("System");
                                 if self.active_contact == None
                                 {
-                                    button = button.fill(selected_color);
+                                    button = button.fill(defines::ACCENT_COLOR);
                                 }
                                 if ui.add_sized(
                                     Vec2::new(ui.available_width(),20.0), 
@@ -142,7 +138,7 @@ impl eframe::App for UI
                                 let mut button = Button::new(&c);
                                 if self.active_contact == Some(c.clone())
                                 {
-                                    button = button.fill(selected_color);
+                                    button = button.fill(defines::ACCENT_COLOR);
                                 }
                                 if ui.add_sized(
                                     Vec2::new(ui.available_width(),20.0), 
@@ -150,6 +146,16 @@ impl eframe::App for UI
                                 {
                                     // user selected
                                     self.active_contact = Some(c.clone());
+                                }
+                            }
+                            { // add new contact button
+                                let button = Button::new("+");
+                                if ui.add_sized(
+                                    Vec2::new(ui.available_width(),20.0), 
+                                    button).clicked()
+                                {
+                                    // system selected
+                                    self.show_new_connection_dialog = true;
                                 }
                             }
                         });
@@ -220,7 +226,7 @@ impl eframe::App for UI
                             //text input
                             //press button enter if enter key is pressed with text input focused
                             let text_hint = 
-                                if let Some(c) = &self.active_contact
+                                if let Some(_c) = &self.active_contact
                                 {"Type a message"}
                                 else 
                                 {"Type a command"};
@@ -256,9 +262,7 @@ impl eframe::App for UI
                                 {
                                     // sent command
                                     self.log.log(MessageKind::Command,&self.input_buffer).unwrap();
-                                    //todo!("Parse command");
-                                    //CHANGE THIS
-                                    self.connection_requests.send(ConnectionRequest::Connect(self.input_buffer.parse().expect("Pls no"))).expect("Please don't crush now");
+                                    todo!("Parse command");
                                 }
                                 self.input_buffer.clear();
                                 //set focus to text input
@@ -269,6 +273,54 @@ impl eframe::App for UI
                 });
             });
         });
+
+        if self.show_new_connection_dialog
+        {
+            egui::Window::new("Connect")
+            .collapsible(false)
+            .resizable(false)
+            .anchor(Align2::CENTER_CENTER, Vec2::new(0.0,0.0))
+            .show(ctx,|ui|{
+                ui.horizontal(|ui|{
+                    ui.add_sized(Vec2::new(250.0,20.0),TextEdit::singleline(&mut self.new_connection_address_buffer)
+                    .hint_text("Address"));
+                    ui.add_sized(Vec2::new(ui.available_width(),20.0),TextEdit::singleline(&mut self.new_connection_port_buffer)
+                    .hint_text("Port"));
+                });
+                ui.horizontal(|ui|{
+                    let mut close_window = false;
+                    
+                    if ui.add_sized(
+                        Vec2::new(ui.available_width()/2.0,20.0),
+                        Button::new("Connect").fill(defines::ACCENT_COLOR))
+                        .clicked()
+                    {
+                        let address_string = format!("{}:{}",self.new_connection_address_buffer,self.new_connection_port_buffer);
+                        match address_string.parse::<SocketAddr>()
+                        {
+                            Ok(address) => 
+                            {
+                                self.connection_requests.send(ConnectionRequest::Connect(address)).expect("Please don't crush now");
+                                close_window = true;
+                            },
+                            Err(_) => {},
+                        }   
+                    }
+                    if ui.add_sized(Vec2::new(ui.available_width(),20.0),Button::new("Cancel")).clicked()
+                    {
+                        close_window = true;
+                    }
+                    if close_window
+                    {
+                        self.new_connection_address_buffer.clear();
+                        self.new_connection_port_buffer.clear();
+                        self.show_new_connection_dialog = false;
+                    }
+                });
+            });
+        }
+
+        ctx.request_repaint_after(Duration::from_millis(60));
     }
 
     fn on_exit(&mut self, _gl: Option<&eframe::glow::Context>) {

@@ -4,16 +4,16 @@ use crate::{network::{Packet, Content, connection_list::ConnectionList}, config:
 
 pub fn run(
     running: Arc<RwLock<bool>>,
-    connection_list: Arc<RwLock<ConnectionList>>,
-    log: Logger,
+    _connection_list: Arc<RwLock<ConnectionList>>,
+    _log: Logger,
     voice_queue: Receiver<(Packet,SocketAddr)>, 
-    sender_queue: Sender<(Content,SocketAddr)>,
-    config: Arc<RwLock<Config>>) -> Result<(),String>
+    _sender_queue: Sender<(Content,SocketAddr)>,
+    _config: Arc<RwLock<Config>>) -> Result<(),String>
 {
     while running.read().map_err(|e|e.to_string())?.clone()
     {
         match voice_queue.recv_timeout(defines::THREAD_QUEUE_TIMEOUT) {
-            Ok((packet,from)) =>
+            Ok((_packet,_from)) =>
             {
                 todo!("Handle voice packet");
             }

@@ -1,6 +1,6 @@
-use std::{sync::{Arc, RwLock, mpsc::{Receiver, Sender}, Mutex}, net::SocketAddr};
+use std::{sync::{Arc, RwLock, mpsc::{Receiver, Sender}}, net::SocketAddr};
 
-use crate::{network::{connection_list::ConnectionList, Packet, Content, connection_request::ConnectionRequest}, config::config::Config, text::{text_list::TextList, text_request::TextRequest}, log::{log::Log, logger::Logger}};
+use crate::{network::{connection_list::ConnectionList, Packet, Content, connection_request::ConnectionRequest}, config::config::Config, text::{text_list::TextList, text_request::TextRequest}, log::{logger::Logger}};
 
 pub struct Context
 {

@@ -8,7 +8,7 @@ pub fn run(
     _connection_list: Arc<RwLock<ConnectionList>>,
     log: Logger,
     queue: Receiver<(Content,SocketAddr)>, 
-    config: Arc<RwLock<Config>>) -> Result<(),String>
+    _config: Arc<RwLock<Config>>) -> Result<(),String>
 {
     while running.read().map_err(|e|e.to_string())?.clone()
     {

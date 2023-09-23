@@ -1,14 +1,14 @@
-use std::{sync::{mpsc::{Receiver, Sender}, Arc, RwLock, Mutex}, net::SocketAddr, collections::HashMap, time::{Instant, Duration}};
+use std::{sync::{mpsc::{Receiver, Sender}, Arc, RwLock}, net::SocketAddr, collections::HashMap, time::{Instant, Duration}};
 
 use rand::RngCore;
 
-use crate::{network::{Packet, connection_list::ConnectionList, Content}, config::{config::Config, defines}, text::{text_list::TextList, text_info::{TextInfo, TextDirection}, text_request::TextRequest}, log::{log::Log, logger::Logger}};
+use crate::{network::{Packet, connection_list::ConnectionList, Content}, config::{config::Config, defines}, text::{text_list::TextList, text_info::{TextInfo, TextDirection}, text_request::TextRequest}, log::{logger::Logger}};
 
 pub fn run(
     running: Arc<RwLock<bool>>,
     text_list: Arc<RwLock<TextList>>,
     connection_list: Arc<RwLock<ConnectionList>>,
-    log: Logger,
+    _log: Logger,
     requests: Receiver<TextRequest>,
     text_queue: Receiver<(Packet,SocketAddr)>, 
     sender_queue: Sender<(Content,SocketAddr)>,
