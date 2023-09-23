@@ -126,6 +126,13 @@ impl eframe::App for UI
                             let mut contacts = 
                             {
                                 let connection_list = self.connection_list.read().expect("I sure hope there is no poisoning here");
+                                if let Some(name) = &self.active_contact
+                                {
+                                    if connection_list.get_address(name).is_none()
+                                    {
+                                        self.active_contact = None;
+                                    }
+                                }
                                 connection_list.get_names()
                             };
                             contacts.sort_by(|c1,c2|{
