@@ -2,7 +2,7 @@ use crate::config::Config;
 
 use super::{Serializable, ContactInfo};
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq)]
 pub enum Content
 {
     Text(String,u64),
@@ -14,7 +14,7 @@ pub enum Content
     VoiceRequest,
     VoiceAccept,
     VoiceAcknowledge,
-    Voice(Vec<u8>),
+    Voice(Vec<f32>),
 }
 impl Content {
     pub fn request_connection_from_config(config: &Config) -> Self {
@@ -98,7 +98,7 @@ impl Serializable for Content
                 7 => Ok((Content::VoiceAccept, 1)),
                 8 => Ok((Content::VoiceAcknowledge, 1)),
                 9 => {
-                    let (voice, voice_len) = Vec::<u8>::deserialize(&data[1..])?;
+                    let (voice, voice_len) = Vec::<f32>::deserialize(&data[1..])?;
                     Ok((Content::Voice(voice), voice_len + 1))
                 }
                 _ => Err(std::io::Error::new(std::io::ErrorKind::InvalidData, "Invalid content type"))

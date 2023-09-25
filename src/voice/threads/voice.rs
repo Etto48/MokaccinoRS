@@ -1,27 +1,127 @@
-use std::{sync::{mpsc::{Receiver, Sender, RecvTimeoutError}, Arc, RwLock}, net::SocketAddr};
+use std::{sync::{mpsc::{Receiver, Sender, RecvTimeoutError}, Arc, RwLock, Mutex}, net::SocketAddr, collections::VecDeque};
 
-use crate::{network::{Packet, Content, ConnectionList}, config::{Config, defines}, log::Logger};
+use cpal::traits::{HostTrait, DeviceTrait, StreamTrait};
+
+use crate::{network::{Packet, Content, ConnectionList}, config::{Config, defines}, log::{Logger, MessageKind}, voice::VoiceRequest};
 
 pub fn run(
     running: Arc<RwLock<bool>>,
-    _connection_list: Arc<RwLock<ConnectionList>>,
-    _log: Logger,
+    connection_list: Arc<RwLock<ConnectionList>>,
+    log: Logger,
+    requests: Receiver<VoiceRequest>,
     voice_queue: Receiver<(Packet,SocketAddr)>, 
-    _sender_queue: Sender<(Content,SocketAddr)>,
+    sender_queue: Sender<(Content,SocketAddr)>,
     _config: Arc<RwLock<Config>>) -> Result<(),String>
 {
+    let host = cpal::default_host();
+    //let devices = host.devices().map_err(|e|e.to_string())?;
+    let input_device = match host.default_input_device()
+    {
+        Some(device) => device,
+        None => return Err("No input device found".to_string()),
+    };
+    let output_device = match host.default_output_device()
+    {
+        Some(device) => device,
+        None => return Err("No output device found".to_string()),
+    };
+    let input_configs = input_device.default_input_config().map_err(|e|e.to_string())?;
+    let output_configs = output_device.default_output_config().map_err(|e|e.to_string())?;
+    let mut input_config = input_configs.config();
+    let mut output_config = output_configs.config();
+
+    input_config.sample_rate = cpal::SampleRate(48000);
+    output_config.sample_rate = cpal::SampleRate(48000);
+
+    input_config.channels = 2;
+    output_config.channels = 2;
+
+    let input_channel = Arc::new(Mutex::new(VecDeque::<f32>::new()));
+    let moved_input_channel = input_channel.clone();
+    let output_channel = Arc::new(Mutex::new(VecDeque::<f32>::new()));
+    let moved_output_channel = output_channel.clone();
+
+    let input_stream = input_device.build_input_stream(&input_config, move |data: &[f32], _| {
+        let mut input_channel = moved_input_channel.lock().unwrap();
+        input_channel.reserve(data.len()/2);
+        let mut even = true;
+        for sample in data.iter()
+        {
+            if even
+            {
+                even = false;
+                continue;
+            }
+            input_channel.push_back(*sample);
+            even = true;
+        }
+    }, move |_err| {
+        todo!("Handle input error");
+    },None).map_err(|e|e.to_string())?;
+
+    let output_stream = output_device.build_output_stream(&output_config, move |data: &mut [f32], _| {
+        let mut output_channel = moved_output_channel.lock().unwrap();
+        for sample in data.chunks_exact_mut(2)
+        {
+            let s = match output_channel.pop_front()
+            {
+                Some(sample) => sample,
+                None => 0.0,
+            };
+            sample[0] = s;
+            sample[1] = s;
+        }
+    }, move |_err| {
+        todo!("Handle output error");
+    },None).map_err(|e|e.to_string())?;
+
+    input_stream.play().map_err(|e|e.to_string())?;
+    output_stream.play().map_err(|e|e.to_string())?;
+
+    let mut interlocutor: Option<SocketAddr> = None;
+
     while running.read().map_err(|e|e.to_string())?.clone()
     {
         match voice_queue.recv_timeout(defines::THREAD_QUEUE_TIMEOUT) {
-            Ok((_packet,_from)) =>
+            Ok((packet,from)) =>
             {
-                todo!("Handle voice packet");
+                match packet.content
+                {
+                    Content::Voice(voice) =>
+                    {
+                        if let Some(interlocutor_address) = interlocutor
+                        {
+                            if interlocutor_address == from
+                            {
+                                let mut output_channel = output_channel.lock().unwrap();
+                                output_channel.reserve(voice.len());
+                                output_channel.extend(voice);
+                            }
+                        }
+                    },
+                    _ => {},
+                }
             }
             Err(e) =>
             {
                 match e
                 {
-                    RecvTimeoutError::Timeout => {},
+                    RecvTimeoutError::Timeout => {
+                        if let Some(interlocutor_address) = interlocutor
+                        {
+                            let connection_list = connection_list.read().map_err(|e|e.to_string())?;
+                            if connection_list.get_name(&interlocutor_address).is_none()
+                            {
+                                stop_transmission(
+                                    &mut interlocutor, 
+                                    &input_channel, 
+                                    &output_channel, 
+                                    &input_stream, 
+                                    &output_stream,
+                                    &log)?;
+                            }
+                        }
+                    },
                     RecvTimeoutError::Disconnected => 
                     {
                         return if !running.read().map_err(|e|e.to_string())?.clone()
@@ -32,6 +132,94 @@ pub fn run(
                 }
             },
         }
+        if let Some(interlocutor_addres) = interlocutor
+        {
+            let mut input_channel = input_channel.lock().unwrap();
+            if input_channel.len() >= defines::VOICE_PACKET_SIZE
+            {
+                let data = input_channel.drain(..defines::VOICE_PACKET_SIZE).collect();
+                let content = Content::Voice(data);
+                sender_queue.send((content, interlocutor_addres)).map_err(|e|e.to_string())?;
+            }
+        }
+        match requests.try_recv()
+        {
+            Ok(request) =>
+            {
+                match request
+                {
+                    VoiceRequest::StartTransmission(target_address) =>
+                    {
+                        start_transmission(
+                            &mut interlocutor, 
+                            target_address, 
+                            &input_stream, 
+                            &output_stream,
+                            &log)?;
+                    },
+                    VoiceRequest::StopTransmission =>
+                    {
+                        stop_transmission(
+                            &mut interlocutor, 
+                            &input_channel, 
+                            &output_channel, 
+                            &input_stream, 
+                            &output_stream,
+                            &log)?;
+                    },
+                }
+            },
+            Err(e) =>
+            {
+                match e
+                {
+                    std::sync::mpsc::TryRecvError::Empty => {},
+                    std::sync::mpsc::TryRecvError::Disconnected => 
+                    {
+                        return if !running.read().map_err(|e|e.to_string())?.clone()
+                        {Ok(())} 
+                        else 
+                        {Err("Voice channel broken".to_string())}
+                    }
+                }
+            },
+        }
     }
+    Ok(())
+}
+
+fn stop_transmission(
+    interlocutor: &mut Option<SocketAddr>,
+    input_channel: &Arc<Mutex<VecDeque<f32>>>,
+    output_channel: &Arc<Mutex<VecDeque<f32>>>,
+    input_stream: &impl StreamTrait,
+    output_stream: &impl StreamTrait,
+    log: &Logger
+) -> Result<(),String>
+{
+    if let Some(addr) = interlocutor
+    {
+        log.log(MessageKind::Event, &format!("Voice chat with {} ended", addr))?;
+    }
+    *interlocutor = None;
+    input_stream.pause().unwrap();
+    output_stream.pause().unwrap();
+    input_channel.lock().unwrap().clear();
+    output_channel.lock().unwrap().clear();
+    Ok(())
+}
+
+fn start_transmission(
+    interlocutor: &mut Option<SocketAddr>,
+    target_address: SocketAddr,
+    input_stream: &impl StreamTrait,
+    output_stream: &impl StreamTrait,
+    log: &Logger
+) -> Result<(),String>
+{
+    *interlocutor = Some(target_address);
+    input_stream.play().unwrap();
+    output_stream.play().unwrap();
+    log.log(MessageKind::Event, &format!("Voice chat with {} started", target_address))?;
     Ok(())
 }

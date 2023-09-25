@@ -3,7 +3,7 @@ use std::time::SystemTime;
 use super::{Content, Serializable};
 
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct Packet
 {
     pub content: Content,

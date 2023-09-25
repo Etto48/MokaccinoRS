@@ -1,9 +1,9 @@
 use std::{sync::{Arc, RwLock, mpsc::Sender}, time::Duration, net::{SocketAddr, IpAddr}};
 
 use chrono::{Local, DateTime};
-use eframe::{egui::{self, Margin, Frame, Label, ScrollArea, Button, TextEdit, CentralPanel, Key, Ui}, epaint::{Vec2, Rounding}, NativeOptions, emath::Align2};
+use eframe::{egui::{self, Margin, Frame, Label, ScrollArea, Button, TextEdit, CentralPanel, Key, Ui}, epaint::{Vec2, Rounding, Stroke}, NativeOptions, emath::Align2};
 
-use crate::{network::{ConnectionList, ConnectionRequest}, text::{TextList, TextRequest, TextDirection}, thread::context::UnmovableContext, log::{Logger, MessageKind}, config::defines};
+use crate::{network::{ConnectionList, ConnectionRequest}, text::{TextList, TextRequest, TextDirection}, thread::context::UnmovableContext, log::{Logger, MessageKind}, config::defines, voice::VoiceRequest};
 
 pub fn run(
     connection_list: Arc<RwLock<ConnectionList>>,
@@ -11,6 +11,7 @@ pub fn run(
     log: Logger,
     connection_requests: Sender<ConnectionRequest>,
     text_requests: Sender<TextRequest>,
+    voice_requests: Sender<VoiceRequest>,
 
     unmovable_context: UnmovableContext,
 )
@@ -30,6 +31,7 @@ pub fn run(
             log,
             connection_requests,
             text_requests,
+            voice_requests,
 
             unmovable_context
         ))))
@@ -51,6 +53,7 @@ pub struct UI
     log: Logger,
     connection_requests: Sender<ConnectionRequest>,
     text_requests: Sender<TextRequest>,
+    voice_requests: Sender<VoiceRequest>,
 
     unmovable_context: UnmovableContext,
 
@@ -65,6 +68,7 @@ impl UI
         log: Logger,
         connection_requests: Sender<ConnectionRequest>,
         text_requests: Sender<TextRequest>,
+        voice_requests: Sender<VoiceRequest>,
         unmovable_context: UnmovableContext,
     ) -> Self
     {   
@@ -78,6 +82,7 @@ impl UI
             log,
             connection_requests, 
             text_requests,
+            voice_requests,
             unmovable_context,
             show_new_connection_dialog: false,
         }
@@ -92,6 +97,13 @@ impl UI
     {
         self.new_connection_port_buffer.parse::<u16>().is_ok()
     }
+
+    fn set_style(ui: &mut Ui, text_color: egui::Color32)
+    {
+        ui.style_mut().visuals.override_text_color = Some(text_color);
+        ui.style_mut().text_styles.insert(egui::TextStyle::Body, egui::FontId::monospace(12.0));
+        ui.style_mut().text_styles.insert(egui::TextStyle::Button, egui::FontId::monospace(12.0));
+    }
 }
 
 impl eframe::App for UI
@@ -100,107 +112,150 @@ impl eframe::App for UI
         let margin = 10.0;
         let confirm_button_width = 80.0;
         let size = frame.info().window_info.size;
+        let (
+            background_color,
+            accent_color,
+            text_color
+        ) = 
+            if ctx.style().visuals.dark_mode
+            {(
+                defines::FRAME_COLOR_DARK,
+                defines::ACCENT_COLOR_DARK,
+                defines::TEXT_COLOR_DARK
+            )} 
+            else {(
+                defines::FRAME_COLOR_LIGHT,
+                defines::ACCENT_COLOR_LIGHT,
+                defines::TEXT_COLOR_LIGHT
+            )};
+
         CentralPanel::default()
         .frame(Frame{
             inner_margin: Margin::same(margin),
             outer_margin: Margin::same(0.0),
+            fill: background_color,
             ..Default::default()
         }).show(ctx, |ui| {
-            ui.style_mut().text_styles.insert(egui::TextStyle::Body, egui::FontId::monospace(12.0));
-            ui.style_mut().text_styles.insert(egui::TextStyle::Button, egui::FontId::monospace(12.0));
+            UI::set_style(ui,text_color);
             //add a vertical space that spans the entire height of the window
             ui.horizontal(|ui|{
                 let group_margin = margin + 5.0;
                 let left_group_width = size.x * 0.2 - 2.0*group_margin;
                 let input_height = 35.0;
                 let left_group_min_width = 150.0 - 2.0*group_margin;
-                ui.group(|ui|{
-                    ui.set_height(size.y - 2.0*group_margin);
-                    ui.set_min_width(left_group_min_width);
-                    ui.set_width(left_group_width);
-                    //contacts
-                    ScrollArea::vertical()
-                    .auto_shrink([false;2])
-                    .show(ui, |ui|{
-                        ui.vertical(|ui|{
-                            let mut contacts = 
-                            {
-                                let connection_list = self.connection_list.read().expect("I sure hope there is no poisoning here");
-                                if let Some(name) = &self.active_contact
+                ui.vertical(|ui|{
+                    ui.group(|ui|{
+                        ui.set_height(size.y - 2.0*group_margin - input_height);
+                        ui.set_min_width(left_group_min_width);
+                        ui.set_width(left_group_width);
+                        //contacts
+                        ScrollArea::vertical()
+                        .auto_shrink([false;2])
+                        .show(ui, |ui|{
+                            ui.vertical(|ui|{
+                                let mut contacts = 
                                 {
-                                    if connection_list.get_address(name).is_none()
+                                    let connection_list = self.connection_list.read().expect("I sure hope there is no poisoning here");
+                                    if let Some(name) = &self.active_contact
                                     {
-                                        self.active_contact = None;
+                                        if connection_list.get_address(name).is_none()
+                                        {
+                                            self.active_contact = None;
+                                        }
                                     }
-                                }
-                                connection_list.get_names()
-                            };
-                            contacts.sort_by(|c1,c2|{
-                                c1.cmp(c2)    
-                            });
-                            { // add system button
-                                let mut button = Button::new("System");
-                                if self.active_contact == None
-                                {
-                                    button = button.fill(defines::ACCENT_COLOR);
-                                }
-                                if ui.add_sized(
-                                    Vec2::new(ui.available_width(),20.0), 
-                                    button).clicked()
-                                {
-                                    // system selected
-                                    self.active_contact = None;
-                                }
-                            }
-                            for c in contacts
-                            {
-                                ui.horizontal(|ui|{
-                                    ui.style_mut().spacing.item_spacing.x = 4.0;
-                                    let mut button = Button::new(&c)
-                                    .rounding(Rounding{nw: 3.0, ne: 0.0, sw: 3.0, se: 0.0});
-                                    if self.active_contact == Some(c.clone())
+                                    connection_list.get_names()
+                                };
+                                contacts.sort_by(|c1,c2|{
+                                    c1.cmp(c2)    
+                                });
+                                { // add system button
+                                    let mut button = Button::new("System");
+                                    if self.active_contact == None
                                     {
-                                        button = button.fill(defines::ACCENT_COLOR);
-                                    }
-                                    if ui.add_sized(
-                                        Vec2::new(ui.available_width() - 28.0,20.0), 
-                                        button).clicked()
-                                    {
-                                        // user selected
-                                        self.active_contact = Some(c.clone());
-                                    }
-                                    let mut button = Button::new("x")
-                                    .rounding(Rounding{nw: 0.0, ne: 3.0, sw: 0.0, se: 3.0});
-                                    if self.active_contact == Some(c.clone())
-                                    {
-                                        button = button.fill(defines::ACCENT_COLOR);
+                                        button = button.fill(accent_color);
                                     }
                                     if ui.add_sized(
                                         Vec2::new(ui.available_width(),20.0), 
                                         button).clicked()
                                     {
-                                        // disconnect user
-                                        self.connection_requests.send(ConnectionRequest::Disconnect(c.clone())).expect("Please don't crush now");
+                                        // system selected
+                                        self.active_contact = None;
+                                    }
+                                }
+                                for c in contacts
+                                {
+                                    ui.horizontal(|ui|{
+                                        ui.style_mut().spacing.item_spacing.x = 4.0;
+                                        let mut button = Button::new(&c)
+                                        .rounding(Rounding{nw: 3.0, ne: 0.0, sw: 3.0, se: 0.0});
                                         if self.active_contact == Some(c.clone())
                                         {
-                                            self.active_contact = None;
+                                            button = button.fill(accent_color);
                                         }
-                                    }
-                                });
-                            }
-                            { // add new contact button
-                                let button = Button::new("+");
-                                if ui.add_sized(
-                                    Vec2::new(ui.available_width(),20.0), 
-                                    button).clicked()
-                                {
-                                    // system selected
-                                    self.show_new_connection_dialog = true;
+                                        if ui.add_sized(
+                                            Vec2::new(ui.available_width() - 28.0,20.0), 
+                                            button).clicked()
+                                        {
+                                            // user selected
+                                            self.active_contact = Some(c.clone());
+                                        }
+                                        let mut button = Button::new("x")
+                                        .rounding(Rounding{nw: 0.0, ne: 3.0, sw: 0.0, se: 3.0});
+                                        if self.active_contact == Some(c.clone())
+                                        {
+                                            button = button.fill(accent_color);
+                                        }
+                                        if ui.add_sized(
+                                            Vec2::new(ui.available_width(),20.0), 
+                                            button).clicked()
+                                        {
+                                            // disconnect user
+                                            self.connection_requests.send(ConnectionRequest::Disconnect(c.clone())).expect("Please don't crush now");
+                                            if self.active_contact == Some(c.clone())
+                                            {
+                                                self.active_contact = None;
+                                            }
+                                        }
+                                    });
                                 }
+                                { // add new contact button
+                                    let button = Button::new("+");
+                                    if ui.add_sized(
+                                        Vec2::new(ui.available_width(),20.0), 
+                                        button).clicked()
+                                    {
+                                        // system selected
+                                        self.show_new_connection_dialog = true;
+                                    }
+                                }
+                            });
+                        });   
+                    });
+                    ui.group(|ui|{
+                        ui.horizontal(|ui|{
+                            ui.set_height(ui.available_height());
+                            ui.set_min_width(left_group_min_width);
+                            ui.set_width(left_group_width);
+                            if let Some(contact) = &self.active_contact
+                            {
+                                if ui.add_sized(
+                                    Vec2::new(ui.available_width()/3.0,ui.available_height()), 
+                                    Button::new("Call"))
+                                .clicked()
+                                {
+                                    todo!("Call button clicked");
+                                    //self.voice_requests.send(VoiceRequest::StartTransmission())
+                                }
+                            }
+                            if ui.add_sized(
+                                Vec2::new(ui.available_width(),ui.available_height()),
+                                Button::new("Settings"))
+                            .clicked()
+                            {
+                                todo!("Settings button clicked");
                             }
                         });
                     });
-                   
                 });
                 ui.vertical(|ui|{
                     ui.group(|ui|{
@@ -236,7 +291,7 @@ impl eframe::App for UI
                                         let time_string = DateTime::<Local>::from(m.time).format("%H:%M:%S").to_string();
                                         let color = match m.kind
                                         {
-                                            MessageKind::Event => defines::LOG_EVENT_COLOR,
+                                            MessageKind::Event => text_color,
                                             MessageKind::Command => defines::LOG_COMMAND_COLOR,
                                             MessageKind::Error => defines::LOG_ERROR_COLOR, 
                                         };
@@ -314,10 +369,19 @@ impl eframe::App for UI
             let text_color_port = 
                 if self.validate_new_connection_port() {None} else {Some(egui::Color32::RED)};
             egui::Window::new("Connect")
+            .frame(Frame{
+                inner_margin: Margin::same(margin),
+                outer_margin: Margin::same(0.0),
+                rounding: Rounding::same(5.0),
+                fill: background_color,
+                stroke: Stroke::new(1.0, accent_color),
+                ..Default::default()
+            })
             .collapsible(false)
             .resizable(false)
             .anchor(Align2::CENTER_CENTER, Vec2::new(0.0,0.0))
             .show(ctx,|ui|{
+                UI::set_style(ui,text_color);
                 ui.horizontal(|ui|{
                     ui.add_sized(Vec2::new(250.0,20.0),TextEdit::singleline(&mut self.new_connection_address_buffer)
                     .hint_text("Address")
@@ -331,7 +395,7 @@ impl eframe::App for UI
                     
                     if ui.add_sized(
                         Vec2::new(ui.available_width()/2.0,20.0),
-                        Button::new("Connect").fill(defines::ACCENT_COLOR))
+                        Button::new("Connect").fill(accent_color))
                         .clicked() ||
                         ui.input(|i| i.key_pressed(Key::Enter))
                     {

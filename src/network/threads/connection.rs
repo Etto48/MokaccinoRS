@@ -161,6 +161,7 @@ pub fn run(
                         for address in timed_out_pending_requests
                         {
                             pending_requests.remove(&address);
+                            log.log(MessageKind::Error, &format!("Connection to {} timed out", address))?;
                         }
 
                         // check for timed out connections

@@ -240,6 +240,25 @@ impl Serializable for u8
     }
 }
 
+impl Serializable for f32
+{
+    fn serialize(&self) -> Vec<u8> {
+        self.to_be_bytes().to_vec()
+    }
+
+    fn deserialize(data: &[u8]) -> std::io::Result<(Self,usize)> {
+        if data.len() < 4
+        {
+            Err(std::io::Error::new(std::io::ErrorKind::InvalidData, "Invalid data length"))
+        }
+        else
+        {
+            let ret = f32::from_be_bytes([data[0], data[1], data[2], data[3]]);
+            Ok((ret, 4))
+        }
+    }
+}
+
 impl Serializable for SystemTime
 {
     fn serialize(&self) -> Vec<u8> {

@@ -34,7 +34,7 @@ pub fn run(
                     log.log(MessageKind::Error, &format!("Packet size mismatch: {} != {}",packet_size,len))?;
                     continue;
                 }
-                log.log(MessageKind::Event, &format!("Received {:?} from {}", packet, from))?;
+                //log.log(MessageKind::Event, &format!("Received {:?} from {}", packet, from))?;
                 let queue = match &packet.content {
                     Content::Text(_,_) |
                     Content::AcknowledgeText(_,_) => {
