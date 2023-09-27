@@ -1,7 +1,6 @@
 use std::{sync::{mpsc::{Receiver, Sender, RecvTimeoutError}, Arc, RwLock, Mutex}, net::SocketAddr, collections::VecDeque};
 
 use cpal::traits::{HostTrait, DeviceTrait, StreamTrait};
-use eframe::egui::output;
 use rubato::Resampler;
 
 use crate::{network::{Packet, Content, ConnectionList}, config::{Config, defines}, log::{Logger, MessageKind}, voice::VoiceRequest};
@@ -114,7 +113,7 @@ pub fn run(
                         {
                             if interlocutor_address == from
                             {
-                                if let Ok((input_frames, output_frames)) = output_resampler.process_into_buffer(
+                                if let Ok((_input_frames, output_frames)) = output_resampler.process_into_buffer(
                                     &[voice], 
                                     &mut output_resampler_buffer, 
                                     None) 
@@ -169,7 +168,7 @@ pub fn run(
             {
                 let data = input_channel.drain(..needed_frames).collect::<Vec<f32>>();
                 
-                let (input_frames, output_frames) = 
+                let (_input_frames, _output_frames) = 
                     input_resampler.process_into_buffer(
                         &[data], 
                         &mut input_resampler_buffer, 
