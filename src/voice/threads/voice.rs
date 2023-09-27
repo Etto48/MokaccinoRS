@@ -1,6 +1,8 @@
 use std::{sync::{mpsc::{Receiver, Sender, RecvTimeoutError}, Arc, RwLock, Mutex}, net::SocketAddr, collections::VecDeque};
 
 use cpal::traits::{HostTrait, DeviceTrait, StreamTrait};
+use eframe::egui::output;
+use rubato::Resampler;
 
 use crate::{network::{Packet, Content, ConnectionList}, config::{Config, defines}, log::{Logger, MessageKind}, voice::VoiceRequest};
 
@@ -28,33 +30,51 @@ pub fn run(
     };
     let input_configs = input_device.default_input_config().map_err(|e|e.to_string())?;
     let output_configs = output_device.default_output_config().map_err(|e|e.to_string())?;
-    let mut input_config = input_configs.config();
-    let mut output_config = output_configs.config();
+    let input_config = input_configs.config();
+    let output_config = output_configs.config();
 
-    input_config.sample_rate = cpal::SampleRate(48000);
-    output_config.sample_rate = cpal::SampleRate(48000);
-
-    input_config.channels = 2;
-    output_config.channels = 2;
+    println!("Chanels: Input: {}, Output: {}", input_config.channels, output_config.channels);
 
     let input_channel = Arc::new(Mutex::new(VecDeque::<f32>::new()));
     let moved_input_channel = input_channel.clone();
     let output_channel = Arc::new(Mutex::new(VecDeque::<f32>::new()));
     let moved_output_channel = output_channel.clone();
 
+    let mut input_resampler = rubato::FftFixedOut::<f32>::new(
+        input_config.sample_rate.0 as usize,
+        defines::VOICE_TRANSMISSION_SAMPLE_RATE,
+        defines::VOICE_BUFFER_SIZE,
+        1,
+        1
+    ).map_err(|e|e.to_string())?;
+
+    let mut input_resampler_buffer = input_resampler.output_buffer_allocate(true);
+
+    let mut output_resampler = rubato::FftFixedIn::<f32>::new(
+        defines::VOICE_TRANSMISSION_SAMPLE_RATE,
+        output_config.sample_rate.0 as usize,
+        defines::VOICE_BUFFER_SIZE,
+        1,
+        1
+    ).map_err(|e|e.to_string())?;
+
+    let mut output_resampler_buffer = output_resampler.output_buffer_allocate(true);
+
+    let input_channels = input_config.channels as usize;
+    let output_channels = output_config.channels as usize;
+
     let input_stream = input_device.build_input_stream(&input_config, move |data: &[f32], _| {
         let mut input_channel = moved_input_channel.lock().unwrap();
         input_channel.reserve(data.len()/2);
-        let mut even = true;
+        let mut channel = 0;
         for sample in data.iter()
         {
-            if even
+            if channel == 0
             {
-                even = false;
-                continue;
+                input_channel.push_back(*sample);
             }
-            input_channel.push_back(*sample);
-            even = true;
+            channel += 1;
+            channel %= input_channels;
         }
     }, move |_err| {
         todo!("Handle input error");
@@ -62,15 +82,17 @@ pub fn run(
 
     let output_stream = output_device.build_output_stream(&output_config, move |data: &mut [f32], _| {
         let mut output_channel = moved_output_channel.lock().unwrap();
-        for sample in data.chunks_exact_mut(2)
+        for sample in data.chunks_exact_mut(output_channels)
         {
             let s = match output_channel.pop_front()
             {
                 Some(sample) => sample,
                 None => 0.0,
             };
-            sample[0] = s;
-            sample[1] = s;
+            for channel in sample.iter_mut()
+            {
+                *channel = s;
+            }
         }
     }, move |_err| {
         todo!("Handle output error");
@@ -92,9 +114,14 @@ pub fn run(
                         {
                             if interlocutor_address == from
                             {
-                                let mut output_channel = output_channel.lock().unwrap();
-                                output_channel.reserve(voice.len());
-                                output_channel.extend(voice);
+                                if let Ok((input_frames, output_frames)) = output_resampler.process_into_buffer(
+                                    &[voice], 
+                                    &mut output_resampler_buffer, 
+                                    None) 
+                                {
+                                    let mut output_channel = output_channel.lock().unwrap();
+                                    output_channel.extend(output_resampler_buffer[0].iter().take(output_frames));
+                                }
                             }
                         }
                         else {
@@ -137,10 +164,19 @@ pub fn run(
         if let Some(interlocutor_addres) = *voice_interlocutor.lock().map_err(|e|e.to_string())?
         {
             let mut input_channel = input_channel.lock().unwrap();
-            if input_channel.len() >= defines::VOICE_BUFFER_SIZE
+            let needed_frames = input_resampler.input_frames_next();
+            if input_channel.len() >= needed_frames
             {
-                let data = input_channel.drain(..defines::VOICE_BUFFER_SIZE).collect();
-                let content = Content::Voice(data);
+                let data = input_channel.drain(..needed_frames).collect::<Vec<f32>>();
+                
+                let (input_frames, output_frames) = 
+                    input_resampler.process_into_buffer(
+                        &[data], 
+                        &mut input_resampler_buffer, 
+                        None
+                    ).unwrap();
+                
+                let content = Content::Voice(input_resampler_buffer[0].clone());
                 sender_queue.send((content, interlocutor_addres)).map_err(|e|e.to_string())?;
             }
         }

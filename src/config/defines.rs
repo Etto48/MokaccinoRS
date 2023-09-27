@@ -4,6 +4,7 @@ pub const THREAD_QUEUE_TIMEOUT: std::time::Duration = std::time::Duration::from_
 pub const MAX_THREAD_JOIN_TRIES: u32 = 10;
 pub const MAX_PACKET_SIZE: usize = 1024;
 pub const VOICE_BUFFER_SIZE: usize = 128;
+pub const VOICE_TRANSMISSION_SAMPLE_RATE: usize = 16000;
 pub const UPDATE_UI_INTERVAL_MS: u64 = 120;
 
 pub const LOG_COMMAND_COLOR: Color32 = Color32::from_rgb(60, 255, 60);
