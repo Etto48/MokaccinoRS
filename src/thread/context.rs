@@ -1,4 +1,4 @@
-use std::{sync::{Arc, RwLock, mpsc::{Receiver, Sender}}, net::SocketAddr};
+use std::{sync::{Arc, RwLock, mpsc::{Receiver, Sender}, Mutex}, net::SocketAddr};
 
 use crate::{network::{ConnectionList, Packet, Content, ConnectionRequest}, config::Config, text::{TextList, TextRequest}, log::{Logger, MessageKind}, voice::VoiceRequest};
 
@@ -22,6 +22,8 @@ pub struct MovableContext
 
     pub voice_requests_rx: Receiver<VoiceRequest>,
     pub voice_requests_tx: Sender<VoiceRequest>,
+    /// changing this in a thread diffrerent from the voice thread will cause a lot of errors
+    pub voice_interlocutor: Arc<Mutex<Option<SocketAddr>>>,
 
     pub connection_queue_rx: Receiver<(Packet,SocketAddr)>,
     pub text_queue_rx: Receiver<(Packet,SocketAddr)>,
@@ -72,6 +74,7 @@ impl Context
         let (connection_requests_tx, connection_requests_rx) = std::sync::mpsc::channel::<ConnectionRequest>();
         let (text_requests_tx, text_requests_rx) = std::sync::mpsc::channel::<TextRequest>();
         let (voice_requests_tx, voice_requests_rx) = std::sync::mpsc::channel::<VoiceRequest>();
+        let voice_interlocutor = Arc::new(Mutex::new(None));
 
         let (text_queue_tx, text_queue_rx) = std::sync::mpsc::channel::<(Packet,SocketAddr)>();
         let (connection_queue_tx, connection_queue_rx) = std::sync::mpsc::channel::<(Packet,SocketAddr)>();
@@ -92,6 +95,7 @@ impl Context
                 text_requests_tx,
                 voice_requests_rx,
                 voice_requests_tx,
+                voice_interlocutor,
 
                 connection_queue_rx,
                 text_queue_rx,

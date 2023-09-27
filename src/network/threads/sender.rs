@@ -10,7 +10,7 @@ pub fn run(
     queue: Receiver<(Content,SocketAddr)>, 
     _config: Arc<RwLock<Config>>) -> Result<(),String>
 {
-    while running.read().map_err(|e|e.to_string())?.clone()
+    while *running.read().map_err(|e|e.to_string())?
     {
         match queue.recv_timeout(defines::THREAD_QUEUE_TIMEOUT)
         {
@@ -28,7 +28,7 @@ pub fn run(
                     std::sync::mpsc::RecvTimeoutError::Timeout => {},
                     std::sync::mpsc::RecvTimeoutError::Disconnected => 
                     {
-                        return if !running.read().map_err(|e|e.to_string())?.clone()
+                        return if !*running.read().map_err(|e|e.to_string())?
                         {Ok(())} 
                         else 
                         {Err("Sender channel broken".to_string())}

@@ -5,6 +5,10 @@ edition = "2021"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
+[profile.release-with-symbols]
+inherits = "release"
+debug = "full"
+
 [dependencies]
 # audio I/O
 cpal = "0.15.2"

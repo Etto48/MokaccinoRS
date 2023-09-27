@@ -1,6 +1,6 @@
 use std::{net::{UdpSocket, SocketAddr}, sync::{Arc, mpsc::Sender, RwLock}};
 
-use crate::{network::{Packet, Serializable, Content, ConnectionList}, config::Config, log::{Logger, MessageKind}};
+use crate::{network::{Packet, Serializable, Content, ConnectionList}, config::{Config, defines}, log::{Logger, MessageKind}};
 
 pub fn run(
     running: Arc<RwLock<bool>>,
@@ -13,8 +13,8 @@ pub fn run(
     _config: Arc<RwLock<Config>>
 ) -> Result<(),String>
 {
-    let mut buffer = [0u8; 1024];
-    while running.read().map_err(|e| e.to_string())?.clone()
+    let mut buffer = [0u8; defines::MAX_PACKET_SIZE];
+    while *running.read().map_err(|e| e.to_string())?
     {
         match socket.recv_from(&mut buffer)
         {

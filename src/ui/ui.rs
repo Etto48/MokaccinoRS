@@ -1,4 +1,4 @@
-use std::{sync::{Arc, RwLock, mpsc::Sender}, time::Duration, net::{SocketAddr, IpAddr}};
+use std::{sync::{Arc, RwLock, mpsc::Sender, Mutex}, time::Duration, net::{SocketAddr, IpAddr}};
 
 use chrono::{Local, DateTime};
 use eframe::{egui::{self, Margin, Frame, Label, ScrollArea, Button, TextEdit, CentralPanel, Key, Ui}, epaint::{Vec2, Rounding, Stroke}, NativeOptions, emath::Align2};
@@ -12,6 +12,7 @@ pub fn run(
     connection_requests: Sender<ConnectionRequest>,
     text_requests: Sender<TextRequest>,
     voice_requests: Sender<VoiceRequest>,
+    voice_interlocutor: Arc<Mutex<Option<SocketAddr>>>,
 
     unmovable_context: UnmovableContext,
 )
@@ -32,6 +33,7 @@ pub fn run(
             connection_requests,
             text_requests,
             voice_requests,
+            voice_interlocutor,
 
             unmovable_context
         ))))
@@ -54,6 +56,7 @@ pub struct UI
     connection_requests: Sender<ConnectionRequest>,
     text_requests: Sender<TextRequest>,
     voice_requests: Sender<VoiceRequest>,
+    voice_interlocutor: Arc<Mutex<Option<SocketAddr>>>,
 
     unmovable_context: UnmovableContext,
 
@@ -69,6 +72,7 @@ impl UI
         connection_requests: Sender<ConnectionRequest>,
         text_requests: Sender<TextRequest>,
         voice_requests: Sender<VoiceRequest>,
+        voice_interlocutor: Arc<Mutex<Option<SocketAddr>>>,
         unmovable_context: UnmovableContext,
     ) -> Self
     {   
@@ -83,6 +87,7 @@ impl UI
             connection_requests, 
             text_requests,
             voice_requests,
+            voice_interlocutor,
             unmovable_context,
             show_new_connection_dialog: false,
         }
@@ -150,6 +155,7 @@ impl eframe::App for UI
                         ui.set_width(left_group_width);
                         //contacts
                         ScrollArea::vertical()
+                        .id_source("ContactsScrollArea")
                         .auto_shrink([false;2])
                         .show(ui, |ui|{
                             ui.vertical(|ui|{
@@ -238,13 +244,35 @@ impl eframe::App for UI
                             ui.set_width(left_group_width);
                             if let Some(contact) = &self.active_contact
                             {
-                                if ui.add_sized(
-                                    Vec2::new(ui.available_width()/3.0,ui.available_height()), 
-                                    Button::new("Call"))
-                                .clicked()
+                                let connection_list = self.connection_list.read().expect("I sure hope there is no poisoning here");
+                                if let Some(address) = connection_list.get_address(contact)
                                 {
-                                    todo!("Call button clicked");
-                                    //self.voice_requests.send(VoiceRequest::StartTransmission())
+                                    let button_color = {
+                                        if let Some(voice_interlocutor) = *self.voice_interlocutor.lock().unwrap()
+                                        {
+                                            if voice_interlocutor == *address
+                                            {Some(accent_color)} else {None}
+                                        } else {None}
+                                    };
+                                    let mut button = Button::new("Voice");
+                                    if button_color.is_some()
+                                    {
+                                        button = button.fill(button_color.unwrap());
+                                    }
+
+                                    if ui.add_sized(
+                                        Vec2::new(ui.available_width()/3.0,ui.available_height()), 
+                                        button)
+                                    .clicked()
+                                    {
+                                        if button_color.is_none()
+                                        { // not yet in voice chat
+                                            self.voice_requests.send(VoiceRequest::StartTransmission(*address)).expect("Please don't crush now");
+                                        }
+                                        else {
+                                            self.voice_requests.send(VoiceRequest::StopTransmission).expect("Please don't crush now");
+                                        }
+                                    }
                                 }
                             }
                             if ui.add_sized(
@@ -262,6 +290,7 @@ impl eframe::App for UI
                         ui.set_height(size.y - 2.0*group_margin - input_height);
                         ui.set_width(ui.available_width());
                         ScrollArea::vertical()
+                        .id_source("ChatScrollArea")
                         .auto_shrink([false;2])
                         .stick_to_bottom(true)
                         .show(ui, |ui|{
@@ -431,7 +460,7 @@ impl eframe::App for UI
             });
         }
 
-        ctx.request_repaint_after(Duration::from_millis(60));
+        ctx.request_repaint_after(Duration::from_millis(defines::UPDATE_UI_INTERVAL_MS));
     }
 
     fn on_exit(&mut self, _gl: Option<&eframe::glow::Context>) {

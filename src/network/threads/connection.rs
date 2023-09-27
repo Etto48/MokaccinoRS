@@ -13,7 +13,7 @@ pub fn run(
 ) -> Result<(),String>
 {
     let mut pending_requests = HashMap::<SocketAddr,(Option<ContactInfo>,Instant,u16)>::new();
-    while running.read().map_err(|e|e.to_string())?.clone()
+    while *running.read().map_err(|e|e.to_string())?
     {
         match connection_queue.recv_timeout(defines::THREAD_QUEUE_TIMEOUT)
         {
@@ -196,7 +196,7 @@ pub fn run(
                     },
                     std::sync::mpsc::RecvTimeoutError::Disconnected => 
                     {
-                        return if !running.read().map_err(|e|e.to_string())?.clone()
+                        return if !*running.read().map_err(|e|e.to_string())?
                         {Ok(())} 
                         else 
                         {Err("Connection channel broken".to_string())}
@@ -231,7 +231,7 @@ pub fn run(
                     std::sync::mpsc::TryRecvError::Empty => {},
                     std::sync::mpsc::TryRecvError::Disconnected => 
                     {
-                        return if !running.read().map_err(|e|e.to_string())?.clone()
+                        return if !*running.read().map_err(|e|e.to_string())?
                         {Ok(())}
                         else
                         {Err("Connection channel broken".to_string())}

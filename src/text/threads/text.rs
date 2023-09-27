@@ -15,7 +15,7 @@ pub fn run(
     config: Arc<RwLock<Config>>) -> Result<(),String>
 {
     let mut pending_messages = HashMap::<(String,String,u64),Instant>::new();
-    while running.read().map_err(|e|e.to_string())?.clone()
+    while *running.read().map_err(|e|e.to_string())?
     {
         match text_queue.recv_timeout(defines::THREAD_QUEUE_TIMEOUT) {
             Ok((packet,from)) => 
@@ -91,7 +91,7 @@ pub fn run(
                     },
                     std::sync::mpsc::RecvTimeoutError::Disconnected => 
                     {
-                        return if !running.read().map_err(|e|e.to_string())?.clone()
+                        return if !*running.read().map_err(|e|e.to_string())?
                         {Ok(())} 
                         else 
                         {Err("Text channel broken".to_string())}
@@ -120,7 +120,7 @@ pub fn run(
                     std::sync::mpsc::TryRecvError::Empty => {},
                     std::sync::mpsc::TryRecvError::Disconnected => 
                     {
-                        return if !running.read().map_err(|e|e.to_string())?.clone()
+                        return if !*running.read().map_err(|e|e.to_string())?
                         {Ok(())} 
                         else 
                         {Err("Text channel broken".to_string())}

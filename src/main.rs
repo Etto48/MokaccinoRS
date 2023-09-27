@@ -45,6 +45,7 @@ fn main() {
         context.movable.connection_list.clone(),
         context.movable.log.clone(),
         context.movable.voice_requests_rx,
+        context.movable.voice_interlocutor.clone(),
         context.movable.voice_queue_rx, 
         context.movable.sender_queue_tx, 
         context.unmovable.config.clone()
@@ -58,6 +59,7 @@ fn main() {
         context.movable.connection_requests_tx,
         context.movable.text_requests_tx,
         context.movable.voice_requests_tx,
+        context.movable.voice_interlocutor,
         
         context.unmovable,
     );
