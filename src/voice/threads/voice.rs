@@ -32,8 +32,6 @@ pub fn run(
     let input_config = input_configs.config();
     let output_config = output_configs.config();
 
-    println!("Chanels: Input: {}, Output: {}", input_config.channels, output_config.channels);
-
     let input_channel = Arc::new(Mutex::new(VecDeque::<f32>::new()));
     let moved_input_channel = input_channel.clone();
     let output_channel = Arc::new(Mutex::new(VecDeque::<f32>::new()));
@@ -118,7 +116,7 @@ pub fn run(
                                     &mut output_resampler_buffer, 
                                     None) 
                                 {
-                                    let mut output_channel = output_channel.lock().unwrap();
+                                    let mut output_channel = output_channel.lock().map_err(|e|e.to_string())?;
                                     output_channel.extend(output_resampler_buffer[0].iter().take(output_frames));
                                 }
                             }
@@ -162,7 +160,7 @@ pub fn run(
         }
         if let Some(interlocutor_addres) = *voice_interlocutor.lock().map_err(|e|e.to_string())?
         {
-            let mut input_channel = input_channel.lock().unwrap();
+            let mut input_channel = input_channel.lock().map_err(|e|e.to_string())?;
             let needed_frames = input_resampler.input_frames_next();
             if input_channel.len() >= needed_frames
             {
@@ -173,7 +171,7 @@ pub fn run(
                         &[data], 
                         &mut input_resampler_buffer, 
                         None
-                    ).unwrap();
+                    ).map_err(|e|e.to_string())?;
                 
                 let content = Content::Voice(input_resampler_buffer[0].clone());
                 sender_queue.send((content, interlocutor_addres)).map_err(|e|e.to_string())?;
@@ -242,10 +240,10 @@ fn stop_transmission(
         log.log(MessageKind::Event, &format!("Voice chat with {} ended", addr))?;
     }
     *interlocutor = None;
-    input_stream.pause().unwrap();
-    output_stream.pause().unwrap();
-    input_channel.lock().unwrap().clear();
-    output_channel.lock().unwrap().clear();
+    input_stream.pause().map_err(|e|e.to_string())?;
+    output_stream.pause().map_err(|e|e.to_string())?;
+    input_channel.lock().map_err(|e|e.to_string())?.clear();
+    output_channel.lock().map_err(|e|e.to_string())?.clear();
     Ok(())
 }
 
@@ -261,10 +259,10 @@ fn start_transmission(
 {
     let mut interlocutor = interlocutor.lock().map_err(|e|e.to_string())?;
     *interlocutor = Some(target_address);
-    input_channel.lock().unwrap().clear();
-    output_channel.lock().unwrap().clear();
-    input_stream.play().unwrap();
-    output_stream.play().unwrap();
+    input_channel.lock().map_err(|e|e.to_string())?.clear();
+    output_channel.lock().map_err(|e|e.to_string())?.clear();
+    input_stream.play().map_err(|e|e.to_string())?;
+    output_stream.play().map_err(|e|e.to_string())?;
     log.log(MessageKind::Event, &format!("Voice chat with {} started", target_address))?;
     Ok(())
 }
