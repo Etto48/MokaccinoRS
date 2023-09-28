@@ -25,4 +25,5 @@ serde = { version = "1.0.188", features = ["derive"] }
 # toml serialization
 toml = "0.8.0"
 rubato = "0.14.1"
+opus = "0.3.0"
 

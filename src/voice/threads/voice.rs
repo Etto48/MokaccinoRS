@@ -57,6 +57,21 @@ pub fn run(
 
     let mut output_resampler_buffer = output_resampler.output_buffer_allocate(true);
 
+    let mut encoder = opus::Encoder::new(
+        defines::VOICE_TRANSMISSION_SAMPLE_RATE as u32,
+        opus::Channels::Mono,
+        opus::Application::Voip
+    ).map_err(|e|e.to_string())?;
+
+    encoder.set_bitrate(defines::VOICE_TRANSMISSION_BITRATE).map_err(|e|e.to_string())?;
+
+    let mut decoder = opus::Decoder::new(
+        defines::VOICE_TRANSMISSION_SAMPLE_RATE as u32,
+        opus::Channels::Mono
+    ).map_err(|e|e.to_string())?;
+
+    //decoder.set_gain().map_err(|e|e.to_string())?;
+
     let input_channels = input_config.channels as usize;
     let output_channels = output_config.channels as usize;
 
@@ -111,13 +126,25 @@ pub fn run(
                         {
                             if interlocutor_address == from
                             {
-                                if let Ok((_input_frames, output_frames)) = output_resampler.process_into_buffer(
-                                    &[voice], 
-                                    &mut output_resampler_buffer, 
-                                    None) 
+                                let mut decoded = vec![0.0;defines::VOICE_BUFFER_SIZE];
+                                if let Ok(decoded_len) = decoder.decode_float(&voice, &mut decoded, false)
                                 {
-                                    let mut output_channel = output_channel.lock().map_err(|e|e.to_string())?;
-                                    output_channel.extend(output_resampler_buffer[0].iter().take(output_frames));
+                                    decoded.truncate(decoded_len);
+                                    if let Ok((_input_frames, output_frames)) = output_resampler.process_into_buffer(
+                                        &[decoded], 
+                                        &mut output_resampler_buffer, 
+                                        None) 
+                                    {
+                                        let mut output_channel = output_channel.lock().map_err(|e|e.to_string())?;
+                                        output_channel.extend(output_resampler_buffer[0].iter().take(output_frames));
+                                    }
+                                    else {
+                                        log.log(MessageKind::Error, &format!("Failed to resample voice packet from {}", from))?;
+                                    }
+
+                                }
+                                else {
+                                    log.log(MessageKind::Error, &format!("Failed to decode voice packet from {}", from))?;
                                 }
                             }
                         }
@@ -166,14 +193,15 @@ pub fn run(
             {
                 let data = input_channel.drain(..needed_frames).collect::<Vec<f32>>();
                 
-                let (_input_frames, _output_frames) = 
+                let (_input_frames, output_frames) = 
                     input_resampler.process_into_buffer(
                         &[data], 
                         &mut input_resampler_buffer, 
                         None
                     ).map_err(|e|e.to_string())?;
                 
-                let content = Content::Voice(input_resampler_buffer[0].clone());
+                let encoded = encoder.encode_vec_float(&input_resampler_buffer[0][..output_frames], defines::VOICE_MAX_TRANSMISSION_SIZE).map_err(|e|e.to_string())?;
+                let content = Content::Voice(encoded);
                 sender_queue.send((content, interlocutor_addres)).map_err(|e|e.to_string())?;
             }
         }
@@ -222,6 +250,7 @@ pub fn run(
             },
         }
     }
+    stop_transmission(&voice_interlocutor, &input_channel, &output_channel, &input_stream, &output_stream, &log).map_err(|e|e.to_string())?;
     Ok(())
 }
 

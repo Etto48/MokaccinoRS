@@ -1,6 +1,6 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 // hide console window on Windows in release
-use mokaccino::{ui, thread, config::defines};
+use mokaccino::{ui, thread};
 
 
 fn main() {
@@ -51,6 +51,13 @@ fn main() {
         context.unmovable.config.clone()
     ));
 
+    let supervisor = thread::supervisor::start(
+        context.unmovable.running.clone(),
+        threads,
+        context.movable.log.clone(),
+        context.unmovable.config.clone()
+    );
+
     // gui loop
     ui::run(
         context.movable.connection_list,
@@ -65,39 +72,22 @@ fn main() {
     );
 
     // join all threads and check for errors
-    let mut success = true;
-    'thread_loop: for thread in threads {
-        let thread_name = thread.thread().name().unwrap_or("unnamed").to_string();
-        let mut join_tries = 0;
-        while !thread.is_finished() {
-            if join_tries > defines::MAX_THREAD_JOIN_TRIES
+    match supervisor.join()
+    {
+        Ok(ret) => 
+        {
+            match ret
             {
-                eprintln!("Thread {thread_name} timed out during join");
-                success = false;
-                continue 'thread_loop;
+                Ok(_) => (),
+                Err(e) => 
+                {
+                    println!("Supervisor returned error: {}",e);
+                },
             }
-            if join_tries == 0 
-            {println!("Waiting for thread {thread_name} to finish");}
-            std::thread::sleep(defines::THREAD_QUEUE_TIMEOUT);
-            join_tries += 1;
-        }
-        match thread.join() {
-            Ok(Ok(())) => {
-                println!("Thread {thread_name} exited successfully");
-            },
-            Ok(Err(e)) => {
-                eprintln!("Error occurred in thread {thread_name}: {e}");
-                success = false;
-            },
-            Err(e) => {
-                let default_error_string = "unknown cause".to_string();
-                let error_string = e.downcast_ref::<String>().unwrap_or(&default_error_string);
-                eprintln!("Error occurred in thread {thread_name}: {error_string}");
-                success = false;
-            }
-        }
-    }
-    if !success {
-        panic!("Error(s) occurred");
+        },
+        Err(e) => 
+        {
+            println!("Error joining supervisor: {}",e.downcast_ref::<String>().unwrap_or(&"Unknown".to_string()));
+        },
     }
 }

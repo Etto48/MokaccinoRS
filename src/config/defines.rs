@@ -1,10 +1,14 @@
 use eframe::epaint::Color32;
 
 pub const THREAD_QUEUE_TIMEOUT: std::time::Duration = std::time::Duration::from_millis(100);
+pub const THREAD_SUPERVISOR_SLEEP_TIME: std::time::Duration = std::time::Duration::from_millis(200);
 pub const MAX_THREAD_JOIN_TRIES: u32 = 10;
 pub const MAX_PACKET_SIZE: usize = 1024;
-pub const VOICE_BUFFER_SIZE: usize = 128;
-pub const VOICE_TRANSMISSION_SAMPLE_RATE: usize = 16000;
+/// Must be one of 120, 240, 480, 960, 1920, and 2880. For 120 and 240 the encoder can't use LPC or hybrid modes.
+pub const VOICE_BUFFER_SIZE: usize = 480;
+pub const VOICE_TRANSMISSION_SAMPLE_RATE: usize = 48000;
+pub const VOICE_TRANSMISSION_BITRATE: opus::Bitrate = opus::Bitrate::Max;
+pub const VOICE_MAX_TRANSMISSION_SIZE: usize = 512;
 pub const UPDATE_UI_INTERVAL_MS: u64 = 120;
 
 pub const LOG_COMMAND_COLOR: Color32 = Color32::from_rgb(60, 255, 60);
