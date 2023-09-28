@@ -4,26 +4,25 @@ use crate::{log::{Logger, MessageKind}, config::{Config, defines}};
 
 pub fn run(
     running: Arc<RwLock<bool>>,
-    handles: Vec<JoinHandle<Result<(),String>>>,
+    mut handles: Vec<JoinHandle<Result<(),String>>>,
     log: Logger,
     _config: Arc<RwLock<Config>>
 ) -> Result<(),String>
 {
-    let mut thread_mask = vec![true;handles.len()];
     while *running.read().map_err(|e|e.to_string())?
     {
+        let mut to_join = Vec::new();
         for (i, handle) in handles.iter().enumerate()
         {
-            if thread_mask[i]
+            if handle.is_finished() && *running.read().map_err(|e|e.to_string())?
             {
-                let thread_id = format!("{:?}",handle.thread().id());
-                let thread_name = handle.thread().name().unwrap_or(&thread_id);
-                if handle.is_finished() && *running.read().map_err(|e|e.to_string())?
-                {
-                    log.log(MessageKind::Error,&format!("Thread {} exited unexpectedly",thread_name)).map_err(|e|e.to_string())?;
-                    thread_mask[i] = false;
-                }
+                to_join.push(i);
             }
+        }
+        for i in to_join
+        {
+            let handle = handles.remove(i);
+            join_and_display(handle, &log)?;
         }
         std::thread::sleep(defines::THREAD_SUPERVISOR_SLEEP_TIME);
     }
@@ -50,33 +49,41 @@ pub fn run(
             }
             std::thread::sleep(defines::THREAD_QUEUE_TIMEOUT);
         }
-        match handle.join() 
+        join_and_display(handle, &log)?;
+    }
+    Ok(())
+}
+
+fn join_and_display(handle: JoinHandle<Result<(),String>>, log: &Logger) -> Result<(),String>
+{
+    let thread_id = format!("{:?}",handle.thread().id());
+    let thread_name = handle.thread().name().unwrap_or(&thread_id).to_owned();
+    match handle.join() 
+    {
+        Ok(ret) => 
         {
-            Ok(ret) => 
+            match ret
             {
-                match ret
+                Ok(_) => 
                 {
-                    Ok(_) => 
-                    {
-                        let message = format!("Thread {} exited successfully",thread_name);
-                        log.log(MessageKind::Event,&message).map_err(|e|e.to_string())?;
-                        println!("{}",message);
-                    },
-                    Err(e) => 
-                    {
-                        let message = format!("Thread {} returned an error: {}",thread_name,e);
-                        log.log(MessageKind::Error,&message).map_err(|e|e.to_string())?;
-                        println!("{}",message);
-                    }
+                    let message = format!("Thread {} exited successfully",thread_name);
+                    log.log(MessageKind::Event,&message).map_err(|e|e.to_string())?;
+                    println!("{}",message);
+                },
+                Err(e) => 
+                {
+                    let message = format!("Thread {} returned an error: {}",thread_name,e);
+                    log.log(MessageKind::Error,&message).map_err(|e|e.to_string())?;
+                    println!("{}",message);
                 }
-            },
-            Err(e) => 
-            {
-                let message = format!("Thread {} panicked: {}",thread_name,e.downcast_ref::<String>().unwrap_or(&"Unknown".to_string()));
-                log.log(MessageKind::Error,&message).map_err(|e|e.to_string())?;
-                println!("{}",message);
-            },
-        }
+            }
+        },
+        Err(e) => 
+        {
+            let message = format!("Thread {} panicked: {}",thread_name,e.downcast_ref::<String>().unwrap_or(&"Unknown".to_string()));
+            log.log(MessageKind::Error,&message).map_err(|e|e.to_string())?;
+            println!("{}",message);
+        },
     }
     Ok(())
 }
