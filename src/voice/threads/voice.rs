@@ -1,6 +1,6 @@
 use std::{sync::{mpsc::{Receiver, Sender, RecvTimeoutError}, Arc, RwLock, Mutex}, net::SocketAddr, collections::VecDeque};
 
-use cpal::traits::{HostTrait, DeviceTrait, StreamTrait};
+use cpal::{traits::{HostTrait, DeviceTrait, StreamTrait}, Device, Host};
 use rubato::Resampler;
 
 use crate::{network::{Packet, Content, ConnectionList}, config::{Config, defines}, log::{Logger, MessageKind}, voice::VoiceRequest};
@@ -13,19 +13,72 @@ pub fn run(
     voice_interlocutor: Arc<Mutex<Option<SocketAddr>>>,
     voice_queue: Receiver<(Packet,SocketAddr)>, 
     sender_queue: Sender<(Content,SocketAddr)>,
-    _config: Arc<RwLock<Config>>) -> Result<(),String>
+    config: Arc<RwLock<Config>>) -> Result<(),String>
 {
     let host = cpal::default_host();
     //let devices = host.devices().map_err(|e|e.to_string())?;
-    let input_device = match host.default_input_device()
+    let (input_device, output_device) = 
     {
-        Some(device) => device,
-        None => return Err("No input device found".to_string()),
-    };
-    let output_device = match host.default_output_device()
-    {
-        Some(device) => device,
-        None => return Err("No output device found".to_string()),
+        let config = config.read().map_err(|e|e.to_string())?;
+        let input_device = 
+        if let Some(input_device_name) = config.voice.input_device.clone()
+        {
+            let input_devices = host.input_devices().map_err(|e|e.to_string())?;
+            let mut input_device = None;
+            for device in input_devices
+            {
+                if device.name().map_err(|e|e.to_string())? == input_device_name
+                {
+                    input_device = Some(device);
+                }
+            }
+            if let Some(input_device) = input_device
+            {
+                input_device
+            }
+            else
+            {
+                log.log(MessageKind::Error, &format!("Input device {} not found", input_device_name))?;
+                log.log(MessageKind::Event, "Using default input device")?;
+                let input_devices_string = host.input_devices().map_err(|e|e.to_string())?.map(|device|device.name().map_err(|e|e.to_string())).collect::<Result<Vec<String>,String>>()?.join(", ");
+                log.log(MessageKind::Event, &format!("Available input devices: {}",input_devices_string))?;
+                get_default_input_device(&host)?
+            }
+        }
+        else 
+        {
+            get_default_input_device(&host)?
+        };
+        let output_device = 
+        if let Some(output_device_name) = config.voice.output_device.clone()
+        {
+            let output_devices = host.output_devices().map_err(|e|e.to_string())?;
+            let mut output_device = None;
+            for device in output_devices
+            {
+                if device.name().map_err(|e|e.to_string())? == output_device_name
+                {
+                    output_device = Some(device);
+                }
+            }
+            if let Some(output_device) = output_device
+            {
+                output_device
+            }
+            else
+            {
+                log.log(MessageKind::Error, &format!("Output device {} not found", output_device_name))?;
+                log.log(MessageKind::Event, "Using default output device")?;
+                let input_devices_string = host.output_devices().map_err(|e|e.to_string())?.map(|device|device.name().map_err(|e|e.to_string())).collect::<Result<Vec<String>,String>>()?.join(", ");
+                log.log(MessageKind::Event, &format!("Available output devices: {}",input_devices_string))?;
+                get_default_output_device(&host)?
+            }
+        }
+        else
+        {
+            get_default_output_device(&host)?
+        };
+        (input_device, output_device)
     };
     let input_configs = input_device.default_input_config().map_err(|e|e.to_string())?;
     let output_configs = output_device.default_output_config().map_err(|e|e.to_string())?;
@@ -294,4 +347,22 @@ fn start_transmission(
     output_stream.play().map_err(|e|e.to_string())?;
     log.log(MessageKind::Event, &format!("Voice chat with {} started", target_address))?;
     Ok(())
+}
+
+fn get_default_input_device(host: &Host) -> Result<Device,String>
+{
+    match host.default_input_device()
+    {
+        Some(device) => Ok(device),
+        None => Err("No input device found".to_string()),
+    }
+}
+
+fn get_default_output_device(host: &Host) -> Result<Device,String>
+{
+    match host.default_output_device()
+    {
+        Some(device) => Ok(device),
+        None => Err("No output device found".to_string()),
+    }
 }

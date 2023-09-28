@@ -4,3 +4,5 @@ port = 4848
 timeout_ms = 200
 ping_ms = 5000
 timeout_strikes = 10
+
+[voice]

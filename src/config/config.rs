@@ -1,10 +1,11 @@
 use serde::{Deserialize, Serialize};
 
-use super::NetworkConfig;
+use super::{NetworkConfig, VoiceConfig};
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Config
 {
     pub network: NetworkConfig,
+    pub voice: VoiceConfig,
 }
 
 impl Config
@@ -30,6 +31,7 @@ impl Default for Config
     fn default() -> Self {
         Config{
             network: NetworkConfig::default(),
+            voice: VoiceConfig::default(),
         }
     }
 }
