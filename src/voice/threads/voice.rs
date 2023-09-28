@@ -16,7 +16,6 @@ pub fn run(
     config: Arc<RwLock<Config>>) -> Result<(),String>
 {
     let host = cpal::default_host();
-    //let devices = host.devices().map_err(|e|e.to_string())?;
     let (input_device, output_device) = 
     {
         let config = config.read().map_err(|e|e.to_string())?;
@@ -122,8 +121,6 @@ pub fn run(
         defines::VOICE_TRANSMISSION_SAMPLE_RATE as u32,
         opus::Channels::Mono
     ).map_err(|e|e.to_string())?;
-
-    //decoder.set_gain().map_err(|e|e.to_string())?;
 
     let input_channels = input_config.channels as usize;
     let output_channels = output_config.channels as usize;
@@ -237,6 +234,11 @@ pub fn run(
                     }
                 }
             },
+        }
+        {
+            let config = config.read().map_err(|e|e.to_string())?;
+            let voice_gain = config.voice.gain.clamp(defines::MIN_GAIN/256, defines::MAX_GAIN/256) * 256;
+            decoder.set_gain(voice_gain).map_err(|e|e.to_string())?;
         }
         if let Some(interlocutor_addres) = *voice_interlocutor.lock().map_err(|e|e.to_string())?
         {

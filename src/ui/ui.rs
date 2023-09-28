@@ -1,7 +1,7 @@
 use std::{sync::{Arc, RwLock, mpsc::Sender, Mutex}, time::Duration, net::{SocketAddr, IpAddr}};
 
 use chrono::{Local, DateTime};
-use eframe::{egui::{self, Margin, Frame, Label, ScrollArea, Button, TextEdit, CentralPanel, Key, Ui}, epaint::{Vec2, Rounding, Stroke}, NativeOptions, emath::Align2};
+use eframe::{egui::{self, Margin, Frame, Label, ScrollArea, Button, TextEdit, CentralPanel, Key, Ui, Slider}, epaint::{Vec2, Rounding, Stroke}, NativeOptions, emath::Align2};
 
 use crate::{network::{ConnectionList, ConnectionRequest}, text::{TextList, TextRequest, TextDirection}, thread::context::UnmovableContext, log::{Logger, MessageKind}, config::defines, voice::VoiceRequest};
 
@@ -61,6 +61,7 @@ pub struct UI
     unmovable_context: UnmovableContext,
 
     show_new_connection_dialog: bool,
+    show_settings_dialog: bool,
 }
 
 impl UI
@@ -90,6 +91,7 @@ impl UI
             voice_interlocutor,
             unmovable_context,
             show_new_connection_dialog: false,
+            show_settings_dialog: false,
         }
     }
 
@@ -280,7 +282,7 @@ impl eframe::App for UI
                                 Button::new("Settings"))
                             .clicked()
                             {
-                                todo!("Settings button clicked");
+                                self.show_settings_dialog = true;
                             }
                         });
                     });
@@ -460,10 +462,64 @@ impl eframe::App for UI
             });
         }
 
+        if self.show_settings_dialog
+        {
+            egui::Window::new("Connect")
+            .frame(Frame{
+                inner_margin: Margin::same(margin),
+                outer_margin: Margin::same(0.0),
+                rounding: Rounding::same(5.0),
+                fill: background_color,
+                stroke: Stroke::new(1.0, accent_color),
+                ..Default::default()
+            })
+            .collapsible(false)
+            .resizable(false)
+            .anchor(Align2::CENTER_CENTER, Vec2::new(0.0,0.0))
+            .show(ctx,|ui|{
+                UI::set_style(ui,text_color);
+                let mut config = self.unmovable_context.config.write().unwrap();
+                ui.label("Voice gain");
+                {
+                    let mut value = config.voice.gain;
+                    ui.add(Slider::new(
+                        &mut value,
+                        defines::MIN_GAIN/256..=defines::MAX_GAIN/256)
+                        .clamp_to_range(true)
+                        .text("Gain"));
+                    config.voice.gain = value;
+                }
+                if ui.add(Button::new("Close")).clicked()
+                {
+                    self.show_settings_dialog = false;
+                }
+            });
+        }
+
         ctx.request_repaint_after(Duration::from_millis(defines::UPDATE_UI_INTERVAL_MS));
     }
 
     fn on_exit(&mut self, _gl: Option<&eframe::glow::Context>) {
+        // save config to file
+        match self.unmovable_context.config.write()
+        {
+            Ok(config) => 
+            {
+                match config.to_file("config.toml")
+                {
+                    Ok(_) => (),
+                    Err(e) => 
+                    {
+                        println!("Error saving config: {}",e);
+                    },
+                }
+            },
+            Err(e) => 
+            {
+                println!("Error saving config: {}",e);
+            },
+        }
+        // stop the other threads
         *self.unmovable_context.running.write().unwrap() = false;
     }
 }

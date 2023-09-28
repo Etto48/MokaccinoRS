@@ -71,7 +71,6 @@ fn main() {
         context.unmovable,
     );
 
-    // join all threads and check for errors
     match supervisor.join()
     {
         Ok(ret) => 
