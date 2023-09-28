@@ -6,4 +6,4 @@ ping_ms = 1000
 timeout_strikes = 10
 
 [voice]
-gain = 127
+gain = 12500

@@ -1,7 +1,8 @@
 use std::{sync::{Arc, RwLock, mpsc::Sender, Mutex}, time::Duration, net::{SocketAddr, IpAddr}};
 
 use chrono::{Local, DateTime};
-use eframe::{egui::{self, Margin, Frame, Label, ScrollArea, Button, TextEdit, CentralPanel, Key, Ui, Slider}, epaint::{Vec2, Rounding, Stroke}, NativeOptions, emath::Align2};
+use cpal::traits::{HostTrait, DeviceTrait};
+use eframe::{egui::{self, Margin, Frame, Label, ScrollArea, Button, TextEdit, CentralPanel, Key, Ui, Slider, Style, Visuals, style::Selection, ComboBox}, epaint::{Vec2, Rounding, Stroke}, NativeOptions, emath::Align2};
 
 use crate::{network::{ConnectionList, ConnectionRequest}, text::{TextList, TextRequest, TextDirection}, thread::context::UnmovableContext, log::{Logger, MessageKind}, config::defines, voice::VoiceRequest};
 
@@ -47,6 +48,7 @@ pub struct UI
     input_buffer: String,
     new_connection_address_buffer: String,
     new_connection_port_buffer: String,
+    settings_port_buffer: String,
 
     active_contact: Option<String>,
 
@@ -62,6 +64,9 @@ pub struct UI
 
     show_new_connection_dialog: bool,
     show_settings_dialog: bool,
+
+    input_devices: Vec<String>,
+    output_devices: Vec<String>,
 }
 
 impl UI
@@ -77,10 +82,19 @@ impl UI
         unmovable_context: UnmovableContext,
     ) -> Self
     {   
+        let host = cpal::default_host();
+        let input_devices = host.input_devices().unwrap();
+        let output_devices = host.output_devices().unwrap();
+        let mut input_devices_names = input_devices.map(|d| d.name().unwrap_or("Unknown device".to_string())).collect::<Vec<_>>();
+        let mut output_devices_names = output_devices.map(|d| d.name().unwrap_or("Unknown device".to_string())).collect::<Vec<_>>();
+        input_devices_names.insert(0, "Default".to_string());
+        output_devices_names.insert(0, "Default".to_string());
+        let settings_port_buffer = unmovable_context.config.read().unwrap().network.port.to_string();
         Self { 
             input_buffer: String::new(), 
             new_connection_address_buffer: String::new(),
             new_connection_port_buffer: String::new(),
+            settings_port_buffer,
             active_contact: None, 
             connection_list, 
             text_list, 
@@ -92,6 +106,8 @@ impl UI
             unmovable_context,
             show_new_connection_dialog: false,
             show_settings_dialog: false,
+            input_devices: input_devices_names,
+            output_devices: output_devices_names,
         }
     }
 
@@ -103,13 +119,6 @@ impl UI
     fn validate_new_connection_port(&self) -> bool
     {
         self.new_connection_port_buffer.parse::<u16>().is_ok()
-    }
-
-    fn set_style(ui: &mut Ui, text_color: egui::Color32)
-    {
-        ui.style_mut().visuals.override_text_color = Some(text_color);
-        ui.style_mut().text_styles.insert(egui::TextStyle::Body, egui::FontId::monospace(12.0));
-        ui.style_mut().text_styles.insert(egui::TextStyle::Button, egui::FontId::monospace(12.0));
     }
 }
 
@@ -136,6 +145,21 @@ impl eframe::App for UI
                 defines::TEXT_COLOR_LIGHT
             )};
 
+        ctx.set_style(Style
+        {
+            override_font_id: Some(egui::FontId::monospace(12.0)),
+            visuals: Visuals
+            {
+                override_text_color: Some(text_color),
+                selection: Selection{
+                    bg_fill: accent_color,
+                    ..Default::default()
+                },
+                ..Default::default()
+            },
+            ..Default::default()
+        });
+
         CentralPanel::default()
         .frame(Frame{
             inner_margin: Margin::same(margin),
@@ -143,7 +167,6 @@ impl eframe::App for UI
             fill: background_color,
             ..Default::default()
         }).show(ctx, |ui| {
-            UI::set_style(ui,text_color);
             //add a vertical space that spans the entire height of the window
             ui.horizontal(|ui|{
                 let group_margin = margin + 5.0;
@@ -308,7 +331,9 @@ impl eframe::App for UI
                                             
                                             ui.label(format!("{}:",
                                             if m.direction == TextDirection::Incoming {c} else {"You"}));
-                                            ui.add(Label::new(m.text.clone()).wrap(true));
+                                            ui.add(Label::new(m.text.clone())
+                                                .wrap(true)
+                                            );
                                         });
                                     }
                                 }
@@ -332,7 +357,9 @@ impl eframe::App for UI
                                             MessageKind::Error =>  format!("{} ({}) Error:",time_string,m.src),
                                         };
                                         ui.colored_label(color,text);
-                                        ui.add(Label::new(m.text.clone()).wrap(true));
+                                        ui.add(Label::new(m.text.clone())
+                                            .wrap(true)
+                                        );
                                     });
                                 }
                             }
@@ -412,7 +439,6 @@ impl eframe::App for UI
             .resizable(false)
             .anchor(Align2::CENTER_CENTER, Vec2::new(0.0,0.0))
             .show(ctx,|ui|{
-                UI::set_style(ui,text_color);
                 ui.horizontal(|ui|{
                     ui.add_sized(Vec2::new(250.0,20.0),TextEdit::singleline(&mut self.new_connection_address_buffer)
                     .hint_text("Address")
@@ -477,19 +503,95 @@ impl eframe::App for UI
             .resizable(false)
             .anchor(Align2::CENTER_CENTER, Vec2::new(0.0,0.0))
             .show(ctx,|ui|{
-                UI::set_style(ui,text_color);
                 let mut config = self.unmovable_context.config.write().unwrap();
-                ui.label("Voice gain");
-                {
-                    let mut value = config.voice.gain;
-                    ui.add(Slider::new(
-                        &mut value,
-                        defines::MIN_GAIN/256..=defines::MAX_GAIN/256)
-                        .clamp_to_range(true)
-                        .text("Gain"));
-                    config.voice.gain = value;
+                {//Network
+                    ui.label("Network");
+                    ui.group(|ui|{
+                        ui.set_width(ui.available_width());
+                        ui.label("Name");
+                        ui.add_sized(
+                            Vec2::new(ui.available_width(),20.0),
+                            TextEdit::singleline(&mut config.network.name));
+                        ui.label("Port");
+                        ui.add_sized(
+                            Vec2::new(ui.available_width(),20.0),
+                            TextEdit::singleline(&mut self.settings_port_buffer));
+                        if let Ok(port) = self.settings_port_buffer.parse::<u16>()
+                        {
+                            config.network.port = port;
+                        }
+                    });
                 }
-                if ui.add(Button::new("Close")).clicked()
+                {//Voice
+                    ui.label("Voice");
+                    ui.group(|ui|{
+
+                        ui.style_mut().spacing.slider_width = ui.available_width() - 10.0;
+                        ui.style_mut().spacing.combo_width = ui.available_width() - 10.0;
+
+                        ui.label("Input device");
+                        let input_selected_text = 
+                            if let Some(name) = config.voice.input_device.clone()
+                            {name} else {"Default".to_string()};
+                        ComboBox::new(
+                            "InputDeviceComboBox",
+                            "",    
+                        )
+                        .selected_text(input_selected_text)
+                        .show_ui(ui, |ui|{
+                            for name in self.input_devices.iter()
+                            {
+                                if ui.selectable_value(&mut config.voice.input_device, Some(name.clone()), name.clone()).clicked()
+                                {
+                                    if name == "Default"
+                                    {
+                                        config.voice.input_device = None;
+                                    }
+                                    else
+                                    {
+                                        config.voice.input_device = Some(name.clone());
+                                    }
+                                    self.voice_requests.send(VoiceRequest::ReloadConfiguration).unwrap();
+                                }
+                            }
+                        });
+                        ui.label("Output device");
+                        let output_selected_text = 
+                            if let Some(name) = config.voice.output_device.clone()
+                            {name} else {"Default".to_string()};
+                        ComboBox::new(
+                            "OutputDeviceComboBox",
+                            "",
+                        ).selected_text(output_selected_text)
+                        .show_ui(ui, |ui|{
+                            for name in self.output_devices.iter()
+                            {
+                                if ui.selectable_value(&mut config.voice.output_device, Some(name.clone()), name.clone()).clicked()
+                                {
+                                    if name == "Default"
+                                    {
+                                        config.voice.output_device = None;
+                                    }
+                                    else
+                                    {
+                                        config.voice.output_device = Some(name.clone());
+                                    }
+                                    self.voice_requests.send(VoiceRequest::ReloadConfiguration).unwrap();
+                                }
+                            }
+                        });
+                        ui.label("Gain");
+                        ui.add(
+                            Slider::new(
+                            &mut config.voice.gain,
+                            defines::MIN_GAIN..=defines::MAX_GAIN)
+                            .show_value(false)
+                            .clamp_to_range(true));
+                    });
+                }
+                if ui.add_sized(
+                    Vec2::new(ui.available_width(),20.0),
+                    Button::new("Close")).clicked()
                 {
                     self.show_settings_dialog = false;
                 }
