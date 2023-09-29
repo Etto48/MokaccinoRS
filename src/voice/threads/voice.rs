@@ -1,4 +1,4 @@
-use std::{sync::{mpsc::{Receiver, Sender, RecvTimeoutError}, Arc, RwLock, Mutex}, net::SocketAddr, collections::VecDeque};
+use std::{sync::{mpsc::{Receiver, Sender, RecvTimeoutError}, Arc, RwLock, Mutex, MutexGuard}, net::SocketAddr, collections::VecDeque};
 
 use cpal::{traits::{HostTrait, DeviceTrait, StreamTrait}, Device, Host};
 use rubato::Resampler;
@@ -67,13 +67,14 @@ pub fn run(
                 match e
                 {
                     RecvTimeoutError::Timeout => {
-                        if let Some(interlocutor_address) = *voice_interlocutor.lock().map_err(|e|e.to_string())?
+                        let voice_interlocutor = voice_interlocutor.lock().map_err(|e|e.to_string())?;
+                        if let Some(interlocutor_address) = *voice_interlocutor
                         {
                             let connection_list = connection_list.read().map_err(|e|e.to_string())?;
                             if connection_list.get_name(&interlocutor_address).is_none()
                             {
-                                stop_transmission(
-                                    &voice_interlocutor, 
+                                stop_transmission_no_lock(
+                                    voice_interlocutor, 
                                     &context.input_channel, 
                                     &context.output_channel, 
                                     &context.input_stream, 
@@ -194,8 +195,8 @@ pub fn run(
     Ok(())
 }
 
-fn stop_transmission(
-    interlocutor: &Arc<Mutex<Option<SocketAddr>>>,
+fn stop_transmission_no_lock(
+    mut interlocutor: MutexGuard<Option<SocketAddr>>,
     input_channel: &Arc<Mutex<VecDeque<f32>>>,
     output_channel: &Arc<Mutex<VecDeque<f32>>>,
     input_stream: &impl StreamTrait,
@@ -203,7 +204,6 @@ fn stop_transmission(
     log: &Logger
 ) -> Result<Option<SocketAddr>,String>
 {
-    let mut interlocutor = interlocutor.lock().map_err(|e|e.to_string())?;
     if let Some(addr) = *interlocutor
     {
         log.log(MessageKind::Event, &format!("Voice chat with {} ended", addr))?;
@@ -215,6 +215,25 @@ fn stop_transmission(
     input_channel.lock().map_err(|e|e.to_string())?.clear();
     output_channel.lock().map_err(|e|e.to_string())?.clear();
     Ok(ret)
+}
+
+fn stop_transmission(
+    interlocutor: &Arc<Mutex<Option<SocketAddr>>>,
+    input_channel: &Arc<Mutex<VecDeque<f32>>>,
+    output_channel: &Arc<Mutex<VecDeque<f32>>>,
+    input_stream: &impl StreamTrait,
+    output_stream: &impl StreamTrait,
+    log: &Logger
+) -> Result<Option<SocketAddr>,String>
+{
+    let interlocutor = interlocutor.lock().map_err(|e|e.to_string())?;
+    stop_transmission_no_lock(
+        interlocutor,
+        input_channel,
+        output_channel,
+        input_stream,
+        output_stream,
+        log)
 }
 
 fn start_transmission(

@@ -13,6 +13,8 @@ pub const UPDATE_UI_INTERVAL_MS: u64 = 120;
 pub const MIN_GAIN: i32 = -32768;
 pub const MAX_GAIN: i32 = 32767;
 
+pub const CONFIG_PATH: &str = "config.toml";
+
 pub const LOG_COMMAND_COLOR: Color32 = Color32::from_rgb(60, 255, 60);
 pub const LOG_ERROR_COLOR: Color32 = Color32::from_rgb(255, 60, 60);
 

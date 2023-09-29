@@ -1,12 +1,12 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 // hide console window on Windows in release
-use mokaccino::{ui, thread};
+use mokaccino::{ui, thread, config::defines};
 
 
 fn main() {
     let mut threads: Vec<std::thread::JoinHandle<Result<(),String>>> = vec![];
     
-    let context = thread::Context::new(Some("config.toml"));
+    let context = thread::Context::new(Some(defines::CONFIG_PATH));
 
     threads.extend(thread::network::start(
         context.unmovable.running.clone(),

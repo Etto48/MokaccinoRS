@@ -120,6 +120,29 @@ impl UI
     {
         self.new_connection_port_buffer.parse::<u16>().is_ok()
     }
+
+    fn save_config(&self)
+    {
+        // save config to file
+        match self.unmovable_context.config.write()
+        {
+            Ok(config) => 
+            {
+                match config.to_file(defines::CONFIG_PATH)
+                {
+                    Ok(_) => (),
+                    Err(e) => 
+                    {
+                        println!("Error saving config: {}",e);
+                    },
+                }
+            },
+            Err(e) => 
+            {
+                println!("Error saving config: {}",e);
+            },
+        }
+    }
 }
 
 impl eframe::App for UI
@@ -490,6 +513,7 @@ impl eframe::App for UI
 
         if self.show_settings_dialog
         {
+            let mut save_config = false;
             egui::Window::new("Connect")
             .frame(Frame{
                 inner_margin: Margin::same(margin),
@@ -594,34 +618,21 @@ impl eframe::App for UI
                     Button::new("Close")).clicked()
                 {
                     self.show_settings_dialog = false;
+                    save_config = true;
                 }
             });
+            if save_config
+            {
+                self.save_config();
+            }
         }
 
         ctx.request_repaint_after(Duration::from_millis(defines::UPDATE_UI_INTERVAL_MS));
     }
 
     fn on_exit(&mut self, _gl: Option<&eframe::glow::Context>) {
-        // save config to file
-        match self.unmovable_context.config.write()
-        {
-            Ok(config) => 
-            {
-                match config.to_file("config.toml")
-                {
-                    Ok(_) => (),
-                    Err(e) => 
-                    {
-                        println!("Error saving config: {}",e);
-                    },
-                }
-            },
-            Err(e) => 
-            {
-                println!("Error saving config: {}",e);
-            },
-        }
+        self.save_config();
         // stop the other threads
-        *self.unmovable_context.running.write().unwrap() = false;
+        self.unmovable_context.stop();
     }
 }
