@@ -1,4 +1,4 @@
-use crate::config::Config;
+use crate::{config::Config, /*crypto::CryptoInfo*/};
 
 use super::Serializable;
 
@@ -7,6 +7,7 @@ use super::Serializable;
 pub struct ContactInfo
 {
     name: String,
+    //crypto_info: CryptoInfo,
 }
 
 

@@ -47,9 +47,6 @@ pub fn run(
                     {
                         &connection_queue
                     },
-                    Content::VoiceRequest |
-                    Content::VoiceAccept |
-                    Content::VoiceAcknowledge |
                     Content::Voice(_) => 
                     {
                         &voice_queue

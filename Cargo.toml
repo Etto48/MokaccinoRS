@@ -5,10 +5,6 @@ edition = "2021"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
-[profile.release-with-symbols]
-inherits = "release"
-debug = "full"
-
 [dependencies]
 # audio I/O
 cpal = "0.15.2"
@@ -24,6 +20,10 @@ rand = "0.8.5"
 serde = { version = "1.0.188", features = ["derive"] }
 # toml serialization
 toml = "0.8.0"
+# audio resampling
 rubato = "0.14.1"
+# audio codec
 opus = "0.3.0"
+# cryptography
+ring = { version = "0.16.20", features = ["std"] }
 

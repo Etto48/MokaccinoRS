@@ -11,9 +11,6 @@ pub enum Content
     Pong,
     RequestConnection(ContactInfo),
     AcknowledgeConnection,
-    VoiceRequest,
-    VoiceAccept,
-    VoiceAcknowledge,
     Voice(Vec<u8>),
 }
 impl Content {
@@ -51,17 +48,8 @@ impl Serializable for Content
             Content::AcknowledgeConnection => {
                 bytes.push(5);
             },
-            Content::VoiceRequest => {
-                bytes.push(6);
-            },
-            Content::VoiceAccept => {
-                bytes.push(7);
-            },
-            Content::VoiceAcknowledge => {
-                bytes.push(8);
-            },
             Content::Voice(voice) => {
-                bytes.push(9);
+                bytes.push(6);
                 bytes.extend(voice.serialize());
             },
         }
@@ -94,10 +82,7 @@ impl Serializable for Content
                     Ok((Content::RequestConnection(contact_info), contact_info_len + 1))
                 }
                 5 => Ok((Content::AcknowledgeConnection, 1)),
-                6 => Ok((Content::VoiceRequest, 1)),
-                7 => Ok((Content::VoiceAccept, 1)),
-                8 => Ok((Content::VoiceAcknowledge, 1)),
-                9 => {
+                6 => {
                     let (voice, voice_len) = Vec::<u8>::deserialize(&data[1..])?;
                     Ok((Content::Voice(voice), voice_len + 1))
                 }

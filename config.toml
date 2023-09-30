@@ -1,9 +1,0 @@
-[network]
-name = "Etto48"
-port = 4848
-timeout_ms = 100
-ping_ms = 1000
-timeout_strikes = 10
-
-[voice]
-gain = 12500
