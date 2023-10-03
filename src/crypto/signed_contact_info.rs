@@ -4,6 +4,7 @@ use crate::network::ContactInfo;
 
 use super::{PrivateKey, PublicKey};
 
+#[derive(Serializable, Clone, Debug, PartialEq)]
 pub struct SignedContactInfo
 {
     contact_info_data: Vec<u8>,
@@ -29,21 +30,5 @@ impl SignedContactInfo
         {
             Err(std::io::Error::new(std::io::ErrorKind::InvalidData, "Invalid signature"))
         }
-    }
-}
-
-impl Serializable for SignedContactInfo
-{
-    fn serialize(&self) -> Vec<u8> {
-        let mut ret = Vec::new();
-        ret.extend(self.contact_info_data.serialize());
-        ret.extend(self.signature.serialize());
-        ret
-    }
-
-    fn deserialize(data: &[u8]) -> std::io::Result<(Self,usize)> {
-        let (contact_info_data, bytes_read) = Vec::<u8>::deserialize(data)?;
-        let (signature, bytes_read) = Vec::<u8>::deserialize(&data[bytes_read..])?;
-        Ok((Self { contact_info_data, signature }, bytes_read))
     }
 }

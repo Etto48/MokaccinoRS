@@ -3,7 +3,7 @@ use crate::{config::Config, /*crypto::CryptoInfo*/};
 use serializable::Serializable;
 
 
-#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+#[derive(Serializable, Clone, Debug, PartialEq, Eq, Hash)]
 pub struct ContactInfo
 {
     name: String,
@@ -29,17 +29,5 @@ impl ContactInfo
     pub fn name(&self) -> &str
     {
         &self.name
-    }
-}
-
-impl Serializable for ContactInfo
-{
-    fn serialize(&self) -> Vec<u8> {
-        self.name.serialize()
-    }
-
-    fn deserialize(data: &[u8]) -> std::io::Result<(Self,usize)> {
-        let (name, bytes_read) = String::deserialize(data)?;
-        Ok((Self::new(&name), bytes_read))
     }
 }

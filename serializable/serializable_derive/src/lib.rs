@@ -120,14 +120,14 @@ fn build_deserialize_body(fields: &syn::Fields) -> proc_macro2::TokenStream
     {
         syn::Fields::Named(_fields) => {
             quote!{
-                #(let (#field_names,len) = #field_types::deserialize(&bytes[offset..])?;
+                #(let (#field_names,len) = <#field_types>::deserialize(&bytes[offset..])?;
                 offset += len;)*
             }
         },
         syn::Fields::Unnamed(_fields) => 
         {
             quote! {
-                #(let (#field_names,len) = #field_types::deserialize(&bytes[offset..])?;
+                #(let (#field_names,len) = <#field_types>::deserialize(&bytes[offset..])?;
                 offset += len;)*
             }
         },

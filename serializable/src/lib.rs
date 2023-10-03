@@ -68,4 +68,21 @@ mod tests
         assert_eq!(test_enum, deserialized);
         assert_eq!(serialized.len(), bytes_read);
     }
+
+    #[derive(Serializable, Debug, PartialEq)]
+    pub struct TestStructWithVec
+    {
+        a: u32,
+        b: u16,
+        c: Vec<u8>
+    }
+    #[test]
+    fn serialize_and_deserialize_vec()
+    {
+        let test_struct = TestStructWithVec { a: 0x12345678, b: 0x9ABC, c: vec![1,2,3,4,5,6,7,8,9] };
+        let serialized = test_struct.serialize();
+        let (deserialized, bytes_read) = TestStructWithVec::deserialize(&serialized).unwrap();
+        assert_eq!(test_struct, deserialized);
+        assert_eq!(serialized.len(), bytes_read);
+    }
 }
