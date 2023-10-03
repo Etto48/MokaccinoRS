@@ -1,6 +1,8 @@
 use std::time::SystemTime;
 
-use super::{Content, Serializable};
+use serializable::Serializable;
+
+use super::Content;
 
 
 #[derive(Clone, Debug, PartialEq)]

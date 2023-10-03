@@ -2,9 +2,11 @@ use std::{sync::{Arc, RwLock, mpsc::Sender, Mutex}, time::Duration, net::{Socket
 
 use chrono::{Local, DateTime};
 use cpal::traits::{HostTrait, DeviceTrait};
-use eframe::{egui::{self, Margin, Frame, Label, ScrollArea, Button, TextEdit, CentralPanel, Key, Ui, Slider, Style, Visuals, style::Selection, ComboBox}, epaint::{Vec2, Rounding, Stroke}, NativeOptions, emath::Align2};
+use eframe::{egui::{self, Margin, Frame, Label, ScrollArea, Button, TextEdit, CentralPanel, Key, Ui, Slider, Style, Visuals, style::Selection, ComboBox, TextureOptions, ImageButton, Layout, load::SizedTexture}, epaint::{Vec2, Rounding, Stroke, TextureHandle}, NativeOptions, emath::{Align2, Align}, CreationContext};
 
 use crate::{network::{ConnectionList, ConnectionRequest}, text::{TextList, TextRequest, TextDirection}, thread::context::UnmovableContext, log::{Logger, MessageKind}, config::defines, voice::VoiceRequest};
+
+use crate::load_image;
 
 pub fn run(
     connection_list: Arc<RwLock<ConnectionList>>,
@@ -27,7 +29,7 @@ pub fn run(
     if let Err(e) = eframe::run_native(
         "Mokaccino",
         options, 
-        Box::new(|_cc| Box::new(UI::new(
+        Box::new(|cc| Box::new(UI::new(
             connection_list,
             text_list,
             log,
@@ -36,7 +38,8 @@ pub fn run(
             voice_requests,
             voice_interlocutor,
 
-            unmovable_context
+            unmovable_context,
+            cc
         ))))
     {
         panic!("Error starting GUI: {}", e)
@@ -67,6 +70,13 @@ pub struct UI
 
     input_devices: Vec<String>,
     output_devices: Vec<String>,
+
+    settings_image_dark: TextureHandle,
+    settings_image_light: TextureHandle,
+    voice_image_dark: TextureHandle,
+    voice_image_light: TextureHandle,
+    send_image_dark: TextureHandle,
+    send_image_light: TextureHandle,
 }
 
 impl UI
@@ -80,6 +90,7 @@ impl UI
         voice_requests: Sender<VoiceRequest>,
         voice_interlocutor: Arc<Mutex<Option<SocketAddr>>>,
         unmovable_context: UnmovableContext,
+        cc: &CreationContext
     ) -> Self
     {   
         let host = cpal::default_host();
@@ -90,6 +101,24 @@ impl UI
         input_devices_names.insert(0, "Default".to_string());
         output_devices_names.insert(0, "Default".to_string());
         let settings_port_buffer = unmovable_context.config.read().unwrap().network.port.to_string();
+        let settings_image_dark = cc.egui_ctx.load_texture("SettingsDark", 
+            load_image!("../../assets/settings_dark.png"),
+            TextureOptions::default());
+        let settings_image_light = cc.egui_ctx.load_texture("SettingsLight", 
+            load_image!("../../assets/settings_light.png"),
+            TextureOptions::default());
+        let voice_image_dark = cc.egui_ctx.load_texture("VoiceDark", 
+            load_image!("../../assets/voice_dark.png"),
+            TextureOptions::default());
+        let voice_image_light = cc.egui_ctx.load_texture("VoiceLight", 
+            load_image!("../../assets/voice_light.png"),
+            TextureOptions::default());
+        let send_image_dark = cc.egui_ctx.load_texture("SendDark", 
+            load_image!("../../assets/send_dark.png"),
+            TextureOptions::default());
+        let send_image_light = cc.egui_ctx.load_texture("SendLight",
+            load_image!("../../assets/send_light.png"),
+            TextureOptions::default());
         Self { 
             input_buffer: String::new(), 
             new_connection_address_buffer: String::new(),
@@ -108,6 +137,12 @@ impl UI
             show_settings_dialog: false,
             input_devices: input_devices_names,
             output_devices: output_devices_names,
+            settings_image_dark,
+            settings_image_light,
+            voice_image_dark,
+            voice_image_light,
+            send_image_dark,
+            send_image_light,
         }
     }
 
@@ -149,25 +184,37 @@ impl eframe::App for UI
 {
     fn update(&mut self, ctx: &egui::Context, frame: &mut eframe::Frame) {
         let margin = 10.0;
-        let confirm_button_width = 80.0;
         let size = frame.info().window_info.size;
+        let image_size = 14.0;
         let (
             background_color,
             accent_color,
-            text_color
+            text_color,
+            settings_image,
+            voice_image,
+            send_image,
         ) = 
             if ctx.style().visuals.dark_mode
             {(
                 defines::FRAME_COLOR_DARK,
                 defines::ACCENT_COLOR_DARK,
-                defines::TEXT_COLOR_DARK
+                defines::TEXT_COLOR_DARK,
+                &self.settings_image_dark,
+                &self.voice_image_dark,
+                &self.send_image_dark,
             )} 
             else {(
                 defines::FRAME_COLOR_LIGHT,
                 defines::ACCENT_COLOR_LIGHT,
-                defines::TEXT_COLOR_LIGHT
+                defines::TEXT_COLOR_LIGHT,
+                &self.settings_image_light,
+                &self.voice_image_light,
+                &self.send_image_light,
             )};
 
+        let settings_image = SizedTexture::new(settings_image, Vec2::new(image_size,image_size));
+        let voice_image = SizedTexture::new(voice_image, Vec2::new(image_size,image_size));
+        let send_image = SizedTexture::new(send_image, Vec2::new(image_size,image_size));
         ctx.set_style(Style
         {
             override_font_id: Some(egui::FontId::monospace(12.0)),
@@ -176,11 +223,11 @@ impl eframe::App for UI
                 override_text_color: Some(text_color),
                 selection: Selection{
                     bg_fill: accent_color,
-                    ..Default::default()
+                    ..ctx.style().visuals.selection.clone()
                 },
-                ..Default::default()
+                ..ctx.style().visuals.clone()
             },
-            ..Default::default()
+            ..(*ctx.style()).clone()
         });
 
         CentralPanel::default()
@@ -290,46 +337,51 @@ impl eframe::App for UI
                             ui.set_height(ui.available_height());
                             ui.set_min_width(left_group_min_width);
                             ui.set_width(left_group_width);
-                            if let Some(contact) = &self.active_contact
-                            {
-                                let connection_list = self.connection_list.read().expect("I sure hope there is no poisoning here");
-                                if let Some(address) = connection_list.get_address(contact)
+                            //align buttons to the right
+                            ui.with_layout(Layout::right_to_left(Align::Center), |ui|{
+                                if ui.add(ImageButton::new(settings_image))
+                                .clicked()
                                 {
-                                    let button_color = {
-                                        if let Some(voice_interlocutor) = *self.voice_interlocutor.lock().unwrap()
+                                    self.show_settings_dialog = true;
+                                }
+                                if let Some(contact) = &self.active_contact
+                                {
+                                    let connection_list = self.connection_list.read().expect("I sure hope there is no poisoning here");
+                                    if let Some(address) = connection_list.get_address(contact)
+                                    {
+                                        let button_color = {
+                                            if let Some(voice_interlocutor) = *self.voice_interlocutor.lock().unwrap()
+                                            {
+                                                if voice_interlocutor == *address
+                                                {Some(accent_color)} else {None}
+                                            } else {None}
+                                        };
+                                        let button = ImageButton::new(voice_image);
+                                        if ui.add(
+                                            |ui: &mut Ui|{
+                                                if let Some(color) = button_color
+                                                {
+                                                    ui.visuals_mut().selection.bg_fill = color;
+                                                    ui.style_mut().visuals.widgets.active.weak_bg_fill = color;
+                                                    ui.style_mut().visuals.widgets.hovered.weak_bg_fill = color;
+                                                    ui.style_mut().visuals.widgets.open.weak_bg_fill = color;
+                                                    ui.style_mut().visuals.widgets.inactive.weak_bg_fill = color;
+                                                }
+                                                ui.add(button)
+                                            })
+                                        .clicked()
                                         {
-                                            if voice_interlocutor == *address
-                                            {Some(accent_color)} else {None}
-                                        } else {None}
-                                    };
-                                    let mut button = Button::new("Voice");
-                                    if button_color.is_some()
-                                    {
-                                        button = button.fill(button_color.unwrap());
-                                    }
-
-                                    if ui.add_sized(
-                                        Vec2::new(ui.available_width()/3.0,ui.available_height()), 
-                                        button)
-                                    .clicked()
-                                    {
-                                        if button_color.is_none()
-                                        { // not yet in voice chat
-                                            self.voice_requests.send(VoiceRequest::StartTransmission(*address)).expect("Please don't crush now");
-                                        }
-                                        else {
-                                            self.voice_requests.send(VoiceRequest::StopTransmission).expect("Please don't crush now");
+                                            if button_color.is_none()
+                                            { // not yet in voice chat
+                                                self.voice_requests.send(VoiceRequest::StartTransmission(*address)).expect("Please don't crush now");
+                                            }
+                                            else {
+                                                self.voice_requests.send(VoiceRequest::StopTransmission).expect("Please don't crush now");
+                                            }
                                         }
                                     }
                                 }
-                            }
-                            if ui.add_sized(
-                                Vec2::new(ui.available_width(),ui.available_height()),
-                                Button::new("Settings"))
-                            .clicked()
-                            {
-                                self.show_settings_dialog = true;
-                            }
+                            });
                         });
                     });
                 });
@@ -393,50 +445,55 @@ impl eframe::App for UI
                         ui.set_height(ui.available_height());
                         ui.horizontal(|ui|{
                             //text input
-                            //press button enter if enter key is pressed with text input focused
-                            let text_hint = 
-                                if let Some(_c) = &self.active_contact
-                                {"Type a message"}
-                                else 
-                                {"Type a command"};
-
-                            let text_edit = ui.add_sized(
-                                Vec2::new(
-                                    ui.available_width() - confirm_button_width,
-                                    ui.available_height()),
-                                TextEdit::singleline(&mut self.input_buffer)
-                                .hint_text(text_hint));
-                            
-                            if (ui.add(|ui: &mut Ui|{
-                                ui.add_sized(
-                                Vec2::new(ui.available_width(),ui.available_height()), 
-                                Button::new("Send"))}).clicked() 
-                                
-                                || ui.input(|i|i.key_pressed(Key::Enter)))
-                                && self.input_buffer.len()>0
-                            {
-                                if let Some(c) = &self.active_contact
+                            ui.with_layout(Layout::right_to_left(Align::Center), |ui|{
+                                let mut just_sent = false;
+                                // send button
+                                if (ui.add(ImageButton::new(send_image)).clicked() 
+                                    || ui.input(|i|i.key_pressed(Key::Enter)))
+                                    && self.input_buffer.len()>0
                                 {
-                                    // sent a message
-                                    let is_connected = {
-                                        let connection_list = self.connection_list.read().expect("I sure hope there is no poisoning here");
-                                        connection_list.get_address(c).is_some()
-                                    };
-                                    if is_connected
+                                    if let Some(c) = &self.active_contact
                                     {
-                                        self.text_requests.send(TextRequest { text: self.input_buffer.clone(), dst: c.clone() }).expect("Please don't crush now");
+                                        // sent a message
+                                        let is_connected = {
+                                            let connection_list = self.connection_list.read().expect("I sure hope there is no poisoning here");
+                                            connection_list.get_address(c).is_some()
+                                        };
+                                        if is_connected
+                                        {
+                                            self.text_requests.send(TextRequest { text: self.input_buffer.clone(), dst: c.clone() }).expect("Please don't crush now");
+                                        }
                                     }
+                                    else
+                                    {
+                                        // sent command
+                                        self.log.log(MessageKind::Command,&self.input_buffer).unwrap();
+                                        todo!("Parse command");
+                                    }
+                                    self.input_buffer.clear();
+                                    //set focus to text input
+                                    just_sent = true;
                                 }
-                                else
+                                //press button enter if enter key is pressed with text input focused
+                                let text_hint = 
+                                    if let Some(_c) = &self.active_contact
+                                    {"Type a message"}
+                                    else 
+                                    {"Type a command"};
+
+                                let text_edit = ui.add_sized(
+                                    Vec2::new(
+                                        ui.available_width(),
+                                        ui.available_height()),
+                                    TextEdit::singleline(&mut self.input_buffer)
+                                    //.vertical_align(Align::Max) // it's a bit buggy as it does not align the hint text
+                                    .hint_text(text_hint)
+                                );
+                                if just_sent
                                 {
-                                    // sent command
-                                    self.log.log(MessageKind::Command,&self.input_buffer).unwrap();
-                                    todo!("Parse command");
+                                    text_edit.request_focus();
                                 }
-                                self.input_buffer.clear();
-                                //set focus to text input
-                                text_edit.request_focus();
-                            }
+                            });
                         });
                     });
                 });
@@ -514,7 +571,7 @@ impl eframe::App for UI
         if self.show_settings_dialog
         {
             let mut save_config = false;
-            egui::Window::new("Connect")
+            egui::Window::new("Settings")
             .frame(Frame{
                 inner_margin: Margin::same(margin),
                 outer_margin: Margin::same(0.0),

@@ -1,11 +1,13 @@
-use crate::network::{ContactInfo, Serializable};
+use serializable::Serializable;
 
-use super::{PrivateKey, PublicKey, Signature};
+use crate::network::ContactInfo;
+
+use super::{PrivateKey, PublicKey};
 
 pub struct SignedContactInfo
 {
     contact_info_data: Vec<u8>,
-    signature: Signature,
+    signature: Vec<u8>,
 }
 
 impl SignedContactInfo
@@ -41,7 +43,7 @@ impl Serializable for SignedContactInfo
 
     fn deserialize(data: &[u8]) -> std::io::Result<(Self,usize)> {
         let (contact_info_data, bytes_read) = Vec::<u8>::deserialize(data)?;
-        let (signature, bytes_read) = Signature::deserialize(&data[bytes_read..])?;
+        let (signature, bytes_read) = Vec::<u8>::deserialize(&data[bytes_read..])?;
         Ok((Self { contact_info_data, signature }, bytes_read))
     }
 }

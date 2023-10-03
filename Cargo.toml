@@ -9,7 +9,7 @@ edition = "2021"
 # audio I/O
 cpal = "0.15.2"
 # GUI
-eframe = "0.22.0"
+eframe = "0.23.0"
 # image processing
 image = "0.24.7"
 # time formatting ect.
@@ -19,11 +19,13 @@ rand = "0.8.5"
 # serialization
 serde = { version = "1.0.188", features = ["derive"] }
 # toml serialization
-toml = "0.8.0"
+toml = "0.8.1"
 # audio resampling
 rubato = "0.14.1"
 # audio codec
 opus = "0.3.0"
 # cryptography
-ring = { version = "0.16.20", features = ["std"] }
+ring = { version = "0.17.0", features = ["std"] }
+
+serializable = {path = "./serializable"}
 

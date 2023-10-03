@@ -1,6 +1,8 @@
+use serializable::Serializable;
+
 use crate::config::Config;
 
-use super::{Serializable, ContactInfo};
+use super::ContactInfo;
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum Content

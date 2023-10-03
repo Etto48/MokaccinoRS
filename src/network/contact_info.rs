@@ -1,6 +1,6 @@
 use crate::{config::Config, /*crypto::CryptoInfo*/};
 
-use super::Serializable;
+use serializable::Serializable;
 
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
