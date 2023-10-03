@@ -178,6 +178,292 @@ impl UI
             },
         }
     }
+
+    fn add_contacts(
+        &mut self,
+        ui: &mut Ui,
+        size: Vec2,
+        group_margin: f32,
+        input_height: f32,
+        left_group_width: f32,
+        left_group_min_width: f32,
+        accent_color: egui::Color32,
+    )
+    {
+        ui.set_height(size.y - 2.0*group_margin - input_height);
+        ui.set_min_width(left_group_min_width);
+        ui.set_width(left_group_width);
+        //contacts
+        ScrollArea::vertical()
+        .id_source("ContactsScrollArea")
+        .auto_shrink([false;2])
+        .show(ui, |ui|{
+            ui.vertical(|ui|{
+                let mut contacts = 
+                {
+                    let connection_list = self.connection_list.read().expect("I sure hope there is no poisoning here");
+                    if let Some(name) = &self.active_contact
+                    {
+                        if connection_list.get_address(name).is_none()
+                        {
+                            self.active_contact = None;
+                        }
+                    }
+                    connection_list.get_names()
+                };
+                contacts.sort_by(|c1,c2|{
+                    c1.cmp(c2)    
+                });
+                { // add system button
+                    let mut button = Button::new("System");
+                    if self.active_contact == None
+                    {
+                        button = button.fill(accent_color);
+                    }
+                    if ui.add_sized(
+                        Vec2::new(ui.available_width(),20.0), 
+                        button).clicked()
+                    {
+                        // system selected
+                        self.active_contact = None;
+                    }
+                }
+                for c in contacts
+                {
+                    ui.horizontal(|ui|{
+                        ui.style_mut().spacing.item_spacing.x = 4.0;
+                        let mut button = Button::new(&c)
+                        .rounding(Rounding{nw: 3.0, ne: 0.0, sw: 3.0, se: 0.0});
+                        if self.active_contact == Some(c.clone())
+                        {
+                            button = button.fill(accent_color);
+                        }
+                        if ui.add_sized(
+                            Vec2::new(ui.available_width() - 28.0,20.0), 
+                            button).clicked()
+                        {
+                            // user selected
+                            self.active_contact = Some(c.clone());
+                        }
+                        let mut button = Button::new("x")
+                        .rounding(Rounding{nw: 0.0, ne: 3.0, sw: 0.0, se: 3.0});
+                        if self.active_contact == Some(c.clone())
+                        {
+                            button = button.fill(accent_color);
+                        }
+                        if ui.add_sized(
+                            Vec2::new(ui.available_width(),20.0), 
+                            button).clicked()
+                        {
+                            // disconnect user
+                            self.connection_requests.send(ConnectionRequest::Disconnect(c.clone())).expect("Please don't crush now");
+                            if self.active_contact == Some(c.clone())
+                            {
+                                self.active_contact = None;
+                            }
+                        }
+                    });
+                }
+                { // add new contact button
+                    let button = Button::new("+");
+                    if ui.add_sized(
+                        Vec2::new(ui.available_width(),20.0), 
+                        button).clicked()
+                    {
+                        // system selected
+                        self.show_new_connection_dialog = true;
+                    }
+                }
+            });
+        });   
+    }
+
+    fn add_chat(
+        &mut self,
+        ui: &mut Ui,
+        size: Vec2,
+        group_margin: f32,
+        input_height: f32,
+        text_color: egui::Color32,
+    )
+    {
+        ui.set_height(size.y - 2.0*group_margin - input_height);
+        ui.set_width(ui.available_width());
+        ScrollArea::vertical()
+        .id_source("ChatScrollArea")
+        .auto_shrink([false;2])
+        .stick_to_bottom(true)
+        .show(ui, |ui|{
+            //chat
+            if let Some(c) = &self.active_contact
+            {
+                let text_list = self.text_list.read().expect("I sure hope there is no poisoning here");
+                if let Some(messages) = text_list.get(c)
+                {
+                    for m in messages
+                    {    
+                        ui.horizontal(|ui|{
+                            
+                            ui.label(format!("{}:",
+                            if m.direction == TextDirection::Incoming {c} else {"You"}));
+                            ui.add(Label::new(m.text.clone())
+                                .wrap(true)
+                            );
+                        });
+                    }
+                }
+            }
+            else
+            {
+                let messages = self.log.get().unwrap();
+                for m in messages
+                {
+                    ui.horizontal(|ui|{
+                        let time_string = DateTime::<Local>::from(m.time).format("%H:%M:%S").to_string();
+                        let color = match m.kind
+                        {
+                            MessageKind::Event => text_color,
+                            MessageKind::Command => defines::LOG_COMMAND_COLOR,
+                            MessageKind::Error => defines::LOG_ERROR_COLOR, 
+                        };
+                        let text = match m.kind {
+                            MessageKind::Command =>  format!("{} ({}) Command:",time_string,m.src),
+                            MessageKind::Event =>  format!("{} ({}):",time_string,m.src),
+                            MessageKind::Error =>  format!("{} ({}) Error:",time_string,m.src),
+                        };
+                        ui.colored_label(color,text);
+                        ui.add(Label::new(m.text.clone())
+                            .wrap(true)
+                        );
+                    });
+                }
+            }
+        });
+    }
+
+    fn add_input(
+        &mut self,
+        ui: &mut Ui,
+        send_image: SizedTexture,
+    )
+    {
+        ui.set_width(ui.available_width());
+        ui.set_height(ui.available_height());
+        ui.horizontal(|ui|{
+            //text input
+            ui.with_layout(Layout::right_to_left(Align::Center), |ui|{
+                let mut just_sent = false;
+                // send button
+                if (ui.add(ImageButton::new(send_image)).clicked() 
+                    || ui.input(|i|i.key_pressed(Key::Enter)))
+                    && self.input_buffer.len()>0
+                {
+                    if let Some(c) = &self.active_contact
+                    {
+                        // sent a message
+                        let is_connected = {
+                            let connection_list = self.connection_list.read().expect("I sure hope there is no poisoning here");
+                            connection_list.get_address(c).is_some()
+                        };
+                        if is_connected
+                        {
+                            self.text_requests.send(TextRequest { text: self.input_buffer.clone(), dst: c.clone() }).expect("Please don't crush now");
+                        }
+                    }
+                    else
+                    {
+                        // sent command
+                        self.log.log(MessageKind::Command,&self.input_buffer).unwrap();
+                        todo!("Parse command");
+                    }
+                    self.input_buffer.clear();
+                    //set focus to text input
+                    just_sent = true;
+                }
+                //press button enter if enter key is pressed with text input focused
+                let text_hint = 
+                    if let Some(_c) = &self.active_contact
+                    {"Type a message"}
+                    else 
+                    {"Type a command"};
+
+                let text_edit = ui.add_sized(
+                    Vec2::new(
+                        ui.available_width(),
+                        ui.available_height()),
+                    TextEdit::singleline(&mut self.input_buffer)
+                    //.vertical_align(Align::Max) // it's a bit buggy as it does not align the hint text
+                    .hint_text(text_hint)
+                );
+                if just_sent
+                {
+                    text_edit.request_focus();
+                }
+            });
+        });
+    }
+
+    fn add_actions(
+        &mut self,
+        ui: &mut Ui,
+        left_group_width: f32,
+        left_group_min_width: f32,
+        accent_color: egui::Color32,
+        settings_image: SizedTexture,
+        voice_image: SizedTexture,
+    )
+    {
+        ui.horizontal(|ui|{
+            ui.set_height(ui.available_height());
+            ui.set_min_width(left_group_min_width);
+            ui.set_width(left_group_width);
+            //align buttons to the right
+            ui.with_layout(Layout::right_to_left(Align::Center), |ui|{
+                if ui.add(ImageButton::new(settings_image))
+                .clicked()
+                {
+                    self.show_settings_dialog = true;
+                }
+                if let Some(contact) = &self.active_contact
+                {
+                    let connection_list = self.connection_list.read().expect("I sure hope there is no poisoning here");
+                    if let Some(address) = connection_list.get_address(contact)
+                    {
+                        let button_color = {
+                            if let Some(voice_interlocutor) = *self.voice_interlocutor.lock().unwrap()
+                            {
+                                if voice_interlocutor == *address
+                                {Some(accent_color)} else {None}
+                            } else {None}
+                        };
+                        let button = ImageButton::new(voice_image);
+                        if ui.add(
+                            |ui: &mut Ui|{
+                                if let Some(color) = button_color
+                                {
+                                    ui.visuals_mut().selection.bg_fill = color;
+                                    ui.style_mut().visuals.widgets.active.weak_bg_fill = color;
+                                    ui.style_mut().visuals.widgets.hovered.weak_bg_fill = color;
+                                    ui.style_mut().visuals.widgets.open.weak_bg_fill = color;
+                                    ui.style_mut().visuals.widgets.inactive.weak_bg_fill = color;
+                                }
+                                ui.add(button)
+                            })
+                        .clicked()
+                        {
+                            if button_color.is_none()
+                            { // not yet in voice chat
+                                self.voice_requests.send(VoiceRequest::StartTransmission(*address)).expect("Please don't crush now");
+                            }
+                            else {
+                                self.voice_requests.send(VoiceRequest::StopTransmission).expect("Please don't crush now");
+                            }
+                        }
+                    }
+                }
+            });
+        });
+    }
 }
 
 impl eframe::App for UI
@@ -237,7 +523,6 @@ impl eframe::App for UI
             fill: background_color,
             ..Default::default()
         }).show(ctx, |ui| {
-            //add a vertical space that spans the entire height of the window
             ui.horizontal(|ui|{
                 let group_margin = margin + 5.0;
                 let left_group_width = size.x * 0.2 - 2.0*group_margin;
@@ -245,256 +530,42 @@ impl eframe::App for UI
                 let left_group_min_width = 150.0 - 2.0*group_margin;
                 ui.vertical(|ui|{
                     ui.group(|ui|{
-                        ui.set_height(size.y - 2.0*group_margin - input_height);
-                        ui.set_min_width(left_group_min_width);
-                        ui.set_width(left_group_width);
-                        //contacts
-                        ScrollArea::vertical()
-                        .id_source("ContactsScrollArea")
-                        .auto_shrink([false;2])
-                        .show(ui, |ui|{
-                            ui.vertical(|ui|{
-                                let mut contacts = 
-                                {
-                                    let connection_list = self.connection_list.read().expect("I sure hope there is no poisoning here");
-                                    if let Some(name) = &self.active_contact
-                                    {
-                                        if connection_list.get_address(name).is_none()
-                                        {
-                                            self.active_contact = None;
-                                        }
-                                    }
-                                    connection_list.get_names()
-                                };
-                                contacts.sort_by(|c1,c2|{
-                                    c1.cmp(c2)    
-                                });
-                                { // add system button
-                                    let mut button = Button::new("System");
-                                    if self.active_contact == None
-                                    {
-                                        button = button.fill(accent_color);
-                                    }
-                                    if ui.add_sized(
-                                        Vec2::new(ui.available_width(),20.0), 
-                                        button).clicked()
-                                    {
-                                        // system selected
-                                        self.active_contact = None;
-                                    }
-                                }
-                                for c in contacts
-                                {
-                                    ui.horizontal(|ui|{
-                                        ui.style_mut().spacing.item_spacing.x = 4.0;
-                                        let mut button = Button::new(&c)
-                                        .rounding(Rounding{nw: 3.0, ne: 0.0, sw: 3.0, se: 0.0});
-                                        if self.active_contact == Some(c.clone())
-                                        {
-                                            button = button.fill(accent_color);
-                                        }
-                                        if ui.add_sized(
-                                            Vec2::new(ui.available_width() - 28.0,20.0), 
-                                            button).clicked()
-                                        {
-                                            // user selected
-                                            self.active_contact = Some(c.clone());
-                                        }
-                                        let mut button = Button::new("x")
-                                        .rounding(Rounding{nw: 0.0, ne: 3.0, sw: 0.0, se: 3.0});
-                                        if self.active_contact == Some(c.clone())
-                                        {
-                                            button = button.fill(accent_color);
-                                        }
-                                        if ui.add_sized(
-                                            Vec2::new(ui.available_width(),20.0), 
-                                            button).clicked()
-                                        {
-                                            // disconnect user
-                                            self.connection_requests.send(ConnectionRequest::Disconnect(c.clone())).expect("Please don't crush now");
-                                            if self.active_contact == Some(c.clone())
-                                            {
-                                                self.active_contact = None;
-                                            }
-                                        }
-                                    });
-                                }
-                                { // add new contact button
-                                    let button = Button::new("+");
-                                    if ui.add_sized(
-                                        Vec2::new(ui.available_width(),20.0), 
-                                        button).clicked()
-                                    {
-                                        // system selected
-                                        self.show_new_connection_dialog = true;
-                                    }
-                                }
-                            });
-                        });   
+                        self.add_contacts(
+                            ui,
+                            size, 
+                            group_margin, 
+                            input_height, 
+                            left_group_width, 
+                            left_group_min_width, 
+                            accent_color
+                        )
                     });
                     ui.group(|ui|{
-                        ui.horizontal(|ui|{
-                            ui.set_height(ui.available_height());
-                            ui.set_min_width(left_group_min_width);
-                            ui.set_width(left_group_width);
-                            //align buttons to the right
-                            ui.with_layout(Layout::right_to_left(Align::Center), |ui|{
-                                if ui.add(ImageButton::new(settings_image))
-                                .clicked()
-                                {
-                                    self.show_settings_dialog = true;
-                                }
-                                if let Some(contact) = &self.active_contact
-                                {
-                                    let connection_list = self.connection_list.read().expect("I sure hope there is no poisoning here");
-                                    if let Some(address) = connection_list.get_address(contact)
-                                    {
-                                        let button_color = {
-                                            if let Some(voice_interlocutor) = *self.voice_interlocutor.lock().unwrap()
-                                            {
-                                                if voice_interlocutor == *address
-                                                {Some(accent_color)} else {None}
-                                            } else {None}
-                                        };
-                                        let button = ImageButton::new(voice_image);
-                                        if ui.add(
-                                            |ui: &mut Ui|{
-                                                if let Some(color) = button_color
-                                                {
-                                                    ui.visuals_mut().selection.bg_fill = color;
-                                                    ui.style_mut().visuals.widgets.active.weak_bg_fill = color;
-                                                    ui.style_mut().visuals.widgets.hovered.weak_bg_fill = color;
-                                                    ui.style_mut().visuals.widgets.open.weak_bg_fill = color;
-                                                    ui.style_mut().visuals.widgets.inactive.weak_bg_fill = color;
-                                                }
-                                                ui.add(button)
-                                            })
-                                        .clicked()
-                                        {
-                                            if button_color.is_none()
-                                            { // not yet in voice chat
-                                                self.voice_requests.send(VoiceRequest::StartTransmission(*address)).expect("Please don't crush now");
-                                            }
-                                            else {
-                                                self.voice_requests.send(VoiceRequest::StopTransmission).expect("Please don't crush now");
-                                            }
-                                        }
-                                    }
-                                }
-                            });
-                        });
+                        self.add_actions(
+                            ui, 
+                            left_group_width, 
+                            left_group_min_width, 
+                            accent_color, 
+                            settings_image, 
+                            voice_image
+                        )
                     });
                 });
                 ui.vertical(|ui|{
                     ui.group(|ui|{
-                        ui.set_height(size.y - 2.0*group_margin - input_height);
-                        ui.set_width(ui.available_width());
-                        ScrollArea::vertical()
-                        .id_source("ChatScrollArea")
-                        .auto_shrink([false;2])
-                        .stick_to_bottom(true)
-                        .show(ui, |ui|{
-                            //chat
-                            if let Some(c) = &self.active_contact
-                            {
-                                let text_list = self.text_list.read().expect("I sure hope there is no poisoning here");
-                                if let Some(messages) = text_list.get(c)
-                                {
-                                    for m in messages
-                                    {    
-                                        ui.horizontal(|ui|{
-                                            
-                                            ui.label(format!("{}:",
-                                            if m.direction == TextDirection::Incoming {c} else {"You"}));
-                                            ui.add(Label::new(m.text.clone())
-                                                .wrap(true)
-                                            );
-                                        });
-                                    }
-                                }
-                            }
-                            else
-                            {
-                                let messages = self.log.get().unwrap();
-                                for m in messages
-                                {
-                                    ui.horizontal(|ui|{
-                                        let time_string = DateTime::<Local>::from(m.time).format("%H:%M:%S").to_string();
-                                        let color = match m.kind
-                                        {
-                                            MessageKind::Event => text_color,
-                                            MessageKind::Command => defines::LOG_COMMAND_COLOR,
-                                            MessageKind::Error => defines::LOG_ERROR_COLOR, 
-                                        };
-                                        let text = match m.kind {
-                                            MessageKind::Command =>  format!("{} ({}) Command:",time_string,m.src),
-                                            MessageKind::Event =>  format!("{} ({}):",time_string,m.src),
-                                            MessageKind::Error =>  format!("{} ({}) Error:",time_string,m.src),
-                                        };
-                                        ui.colored_label(color,text);
-                                        ui.add(Label::new(m.text.clone())
-                                            .wrap(true)
-                                        );
-                                    });
-                                }
-                            }
-                        });
+                        self.add_chat(
+                            ui, 
+                            size, 
+                            group_margin, 
+                            input_height, 
+                            text_color
+                        )
                     });
                     ui.group(|ui|{
-                        ui.set_width(ui.available_width());
-                        ui.set_height(ui.available_height());
-                        ui.horizontal(|ui|{
-                            //text input
-                            ui.with_layout(Layout::right_to_left(Align::Center), |ui|{
-                                let mut just_sent = false;
-                                // send button
-                                if (ui.add(ImageButton::new(send_image)).clicked() 
-                                    || ui.input(|i|i.key_pressed(Key::Enter)))
-                                    && self.input_buffer.len()>0
-                                {
-                                    if let Some(c) = &self.active_contact
-                                    {
-                                        // sent a message
-                                        let is_connected = {
-                                            let connection_list = self.connection_list.read().expect("I sure hope there is no poisoning here");
-                                            connection_list.get_address(c).is_some()
-                                        };
-                                        if is_connected
-                                        {
-                                            self.text_requests.send(TextRequest { text: self.input_buffer.clone(), dst: c.clone() }).expect("Please don't crush now");
-                                        }
-                                    }
-                                    else
-                                    {
-                                        // sent command
-                                        self.log.log(MessageKind::Command,&self.input_buffer).unwrap();
-                                        todo!("Parse command");
-                                    }
-                                    self.input_buffer.clear();
-                                    //set focus to text input
-                                    just_sent = true;
-                                }
-                                //press button enter if enter key is pressed with text input focused
-                                let text_hint = 
-                                    if let Some(_c) = &self.active_contact
-                                    {"Type a message"}
-                                    else 
-                                    {"Type a command"};
-
-                                let text_edit = ui.add_sized(
-                                    Vec2::new(
-                                        ui.available_width(),
-                                        ui.available_height()),
-                                    TextEdit::singleline(&mut self.input_buffer)
-                                    //.vertical_align(Align::Max) // it's a bit buggy as it does not align the hint text
-                                    .hint_text(text_hint)
-                                );
-                                if just_sent
-                                {
-                                    text_edit.request_focus();
-                                }
-                            });
-                        });
+                        self.add_input(
+                            ui, 
+                            send_image
+                        )
                     });
                 });
             });
