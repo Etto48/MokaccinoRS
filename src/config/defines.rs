@@ -13,10 +13,6 @@ pub const UPDATE_UI_INTERVAL_MS: u64 = 120;
 pub const MIN_GAIN: i32 = -32768;
 pub const MAX_GAIN: i32 = 32767;
 
-pub static SIGNING_ALGORITHM: &ring::signature::EdDSAParameters = &ring::signature::ED25519;
-pub static KEY_PAIR_ALGORITHM: &ring::agreement::Algorithm = &ring::agreement::ECDH_P384;
-pub type PrivateKey = ring::signature::Ed25519KeyPair;
-
 pub const CONFIG_PATH: &str = "config.toml";
 
 pub const LOG_COMMAND_COLOR: Color32 = Color32::from_rgb(60, 255, 60);

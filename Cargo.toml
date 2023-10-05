@@ -25,7 +25,8 @@ rubato = "0.14.1"
 # audio codec
 opus = "0.3.0"
 # cryptography
-ring = { version = "0.17.0", features = ["std"] }
+crypto = { version = "0.5.1", features = ["aead", "elliptic-curve", "signature", "std"] }
 
 serializable = {path = "./serializable"}
+
 

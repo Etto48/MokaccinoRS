@@ -7,28 +7,17 @@ use super::{PrivateKey, PublicKey};
 #[derive(Serializable, Clone, Debug, PartialEq)]
 pub struct SignedContactInfo
 {
-    contact_info_data: Vec<u8>,
-    signature: Vec<u8>,
 }
 
 impl SignedContactInfo
 {
     pub fn from_contact_info(contact_info: ContactInfo, private_key: &PrivateKey) -> Self
     {
-        let contact_info_data = contact_info.serialize();
-        let signature = private_key.sign(&contact_info_data);
-        Self { contact_info_data, signature }
+        todo!()
     }
 
     pub fn into_contact_info(self, public_key: &PublicKey) -> std::io::Result<ContactInfo>
     {
-        if public_key.verify(&self.contact_info_data, &self.signature)
-        {
-            ContactInfo::deserialize(&self.contact_info_data).map(|(contact_info, _)| contact_info)
-        }
-        else
-        {
-            Err(std::io::Error::new(std::io::ErrorKind::InvalidData, "Invalid signature"))
-        }
+        todo!()
     }
 }
