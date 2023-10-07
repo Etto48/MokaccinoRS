@@ -275,3 +275,22 @@ impl Serializable for SystemTime
         }
     }
 }
+
+impl<const L: usize, T: Serializable> Serializable for [T;L]
+{
+    fn serialize(&self) -> Vec<u8> {
+        return self.iter().flat_map(|x| x.serialize()).collect();
+    }
+
+    fn deserialize(data: &[u8]) -> std::io::Result<(Self,usize)> {
+        let mut ret: [T;L] = unsafe { std::mem::MaybeUninit::uninit().assume_init() };
+        let mut offset = 0;
+        for i in 0..L
+        {
+            let (item, len) = T::deserialize(&data[offset..])?;
+            ret[i] = item;
+            offset += len;
+        }
+        Ok((ret, offset))
+    }
+}

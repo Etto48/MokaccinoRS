@@ -13,6 +13,10 @@ pub const UPDATE_UI_INTERVAL_MS: u64 = 120;
 pub const MIN_GAIN: i32 = -32768;
 pub const MAX_GAIN: i32 = 32767;
 
+pub const SYMMETRIC_ALGORITHM: fn() -> openssl::symm::Cipher = openssl::symm::Cipher::aes_256_gcm;
+pub const SYMMETRIC_ALGORITHM_IV_LEN: usize = 12;
+pub const SYMMETRIC_ALGORITHM_TAG_LEN: usize = 16;
+
 pub const CONFIG_PATH: &str = "config.toml";
 
 pub const LOG_COMMAND_COLOR: Color32 = Color32::from_rgb(60, 255, 60);
