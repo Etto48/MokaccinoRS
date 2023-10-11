@@ -1,5 +1,9 @@
 use std::{net::SocketAddr, collections::HashMap};
 
+use symmetric_key::SymmetricKey;
+
+use crate::crypto::symmetric_key;
+
 use super::ConnectionInfo;
 
 pub struct ConnectionList
@@ -20,11 +24,11 @@ impl ConnectionList
         }
     }
 
-    pub fn add(&mut self, name: &str, address: SocketAddr)
+    pub fn add(&mut self, name: &str, address: SocketAddr, symmetric_key: SymmetricKey)
     {
         self.names_to_addresses.insert(name.to_string(),address);
         self.addresses_to_names.insert(address,name.to_string());
-        self.address_to_info.insert(address,ConnectionInfo::new());
+        self.address_to_info.insert(address,ConnectionInfo::new(symmetric_key));
     }
 
     pub fn remove_with_name(&mut self, name: &str)

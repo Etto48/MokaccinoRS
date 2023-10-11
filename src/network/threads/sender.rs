@@ -2,12 +2,12 @@ use std::{net::{UdpSocket, SocketAddr}, sync::{Arc, mpsc::Receiver, RwLock}};
 
 use serializable::Serializable;
 
-use crate::{network::{Packet, Content, ConnectionList}, config::{Config, defines}, log::Logger};
+use crate::{network::{Packet, Content, ConnectionList, SecurePacket}, config::{Config, defines}, log::Logger, crypto::Ciphertext};
 
 pub fn run(
     running: Arc<RwLock<bool>>,
     socket: Arc<UdpSocket>, 
-    _connection_list: Arc<RwLock<ConnectionList>>,
+    connection_list: Arc<RwLock<ConnectionList>>,
     _log: Logger,
     queue: Receiver<(Content,SocketAddr)>, 
     _config: Arc<RwLock<Config>>) -> Result<(),String>
@@ -20,7 +20,20 @@ pub fn run(
             {
                 //log.log(MessageKind::Event, &format!("Sending {:?} to {}",content, dst))?;
                 let packet = Packet::from_content_now(content);
-                let bytes = packet.serialize();
+                let secure_packet = 
+                {
+                    let connection_list = connection_list.read().map_err(|e|e.to_string())?;
+                    if let Some(info) = connection_list.get_info_from_addr(&dst)
+                    {
+                        SecurePacket::Ciphertext(Ciphertext::from_packet(packet, &info.crypto_session_info.symmetric_key))
+                    }
+                    else
+                    {
+                        SecurePacket::Plaintext(packet)    
+                    }
+                };
+                
+                let bytes = secure_packet.serialize();
                 socket.send_to(&bytes, dst).map_err(|e|e.to_string())?;
             }
             Err(e) =>

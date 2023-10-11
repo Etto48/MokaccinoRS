@@ -32,7 +32,7 @@ pub fn start(
 #[cfg(test)]
 mod tests
 {
-    use crate::{thread, network::ContactInfo, config::defines};
+    use crate::{thread, network::ContactInfo, config::defines, crypto::{SignedContactInfo, CryptoConnectionInfo}};
     use super::*;
 
     #[test]
@@ -49,7 +49,13 @@ mod tests
             context.unmovable.config.clone());
         assert_eq!(handles.len(),1);
         let remote_address = "0.0.0.0:4848".parse().unwrap();
-        let remote_contact_info = ContactInfo::new("Test");
+        let remote_private_key = crate::crypto::PrivateKey::new();
+        let remote_ecdhe_private_key = crate::crypto::PrivateKey::new();
+        let remote_crypto_info = CryptoConnectionInfo{
+            ecdhe_public_key: remote_ecdhe_private_key.public_key(),
+            public_key: remote_private_key.public_key(),
+        };
+        let remote_contact_info = SignedContactInfo::from_contact_info(ContactInfo::new("Test", &remote_crypto_info), &remote_private_key);
         context.movable.connection_queue_tx.send(
             (
                 Packet::from_content_now(Content::RequestConnection(remote_contact_info.clone())),
@@ -60,7 +66,7 @@ mod tests
         if let Ok((content,dst)) = context.movable.sender_queue_rx.recv_timeout(defines::THREAD_QUEUE_TIMEOUT)
         {
             assert_eq!(content,
-            Content::request_connection_from_config(&context.unmovable.config.read().unwrap()));
+            Content::request_connection_from_config(&context.unmovable.config.read().unwrap(), remote_ecdhe_private_key.public_key()));
             assert_eq!(dst,remote_address);
         }
         else {
@@ -73,17 +79,23 @@ mod tests
         std::thread::sleep(defines::THREAD_QUEUE_TIMEOUT);
         {
             let connection_list = context.movable.connection_list.read().unwrap();
-            if let Some(_info) = connection_list.get_info_from_name(remote_contact_info.name())
+            if let Ok(remote_contact_info) = remote_contact_info.into_contact_info(&remote_private_key.public_key())
             {
-                //success
+                if let Some(_info) = connection_list.get_info_from_name(remote_contact_info.name())
+                {
+                    //success
+                }
+                else {
+                    println!("Connection list:");
+                    for (name,info) in connection_list.get_infos()
+                    {
+                        println!("{}: {:?}",name,info);
+                    }
+                    panic!("Connection timed out");
+                }
             }
             else {
-                println!("Connection list:");
-                for (name,info) in connection_list.get_infos()
-                {
-                    println!("{}: {:?}",name,info);
-                }
-                panic!("Connection timed out");
+                panic!("Auth error");
             }
         }
     }

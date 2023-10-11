@@ -1,6 +1,6 @@
 use serializable::Serializable;
 
-use crate::config::Config;
+use crate::{config::Config, crypto::{SignedContactInfo, PublicKey}};
 
 use super::ContactInfo;
 
@@ -11,12 +11,12 @@ pub enum Content
     AcknowledgeText(String,u64),
     Ping,
     Pong,
-    RequestConnection(ContactInfo),
+    RequestConnection(SignedContactInfo),
     AcknowledgeConnection,
     Voice(Vec<u8>),
 }
 impl Content {
-    pub fn request_connection_from_config(config: &Config) -> Self {
-        Content::RequestConnection(ContactInfo::from_config(config))
+    pub fn request_connection_from_config(config: &Config, ecdhe_public_key: PublicKey) -> Self {
+        Content::RequestConnection(SignedContactInfo::from_contact_info(ContactInfo::from_config(config, ecdhe_public_key), &config.network.private_key))
     }
 }

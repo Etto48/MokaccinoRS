@@ -33,6 +33,7 @@ pub fn start(
 #[cfg(test)]
 mod tests {
     use crate::config::defines;
+    use crate::crypto::SymmetricKey;
     use crate::thread::Context;
 
     use super::*;
@@ -58,7 +59,8 @@ mod tests {
             text: "TestText".to_string(),
             dst: "TEST".to_string(),
         };
-        context.movable.connection_list.write().unwrap().add("TEST", "127.0.0.1:4848".parse().unwrap());
+        let symmetric_key = SymmetricKey::random();
+        context.movable.connection_list.write().unwrap().add("TEST", "127.0.0.1:4848".parse().unwrap(), symmetric_key);
         context.movable.text_requests_tx.send(request).unwrap();
 
         // Wait for the request to be processed

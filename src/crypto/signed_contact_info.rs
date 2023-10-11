@@ -24,7 +24,7 @@ impl SignedContactInfo
         }
     }
 
-    pub fn into_contact_info(self, public_key: &PublicKey) -> std::io::Result<ContactInfo>
+    pub fn into_contact_info(&self, public_key: &PublicKey) -> std::io::Result<ContactInfo>
     {
         if public_key.verify(&self.info, &self.signature)
         {
@@ -41,6 +41,19 @@ impl SignedContactInfo
         else
         {
             Err(std::io::Error::new(std::io::ErrorKind::InvalidData, "Invalid signature"))
+        }
+    }
+
+    pub fn info(&self) -> std::io::Result<ContactInfo>
+    {
+        let (contact_info, len) = ContactInfo::deserialize(&self.info)?;
+        if len == self.info.len()
+        {
+            Ok(contact_info)
+        }
+        else
+        {
+            Err(std::io::Error::new(std::io::ErrorKind::InvalidData, "Invalid data length"))
         }
     }
 }

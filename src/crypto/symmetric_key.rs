@@ -4,17 +4,25 @@ use crate::config::defines;
 
 use super::Ciphertext;
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct SymmetricKey
 {
-    key: Vec<u8>
+    key: [u8; defines::SYMMETRIC_ALGORITHM_KEY_LEN]
 }
 
 impl SymmetricKey
 {
+    pub fn random() -> Self
+    {
+        let mut key = [0; defines::SYMMETRIC_ALGORITHM_KEY_LEN];
+        openssl::rand::rand_bytes(&mut key).unwrap();
+        SymmetricKey { key }
+    }
+
     pub fn from_shared_secret(shared_secret: &[u8]) -> Self
     {
         let hss = openssl::hash::hash(openssl::hash::MessageDigest::sha3_512(), shared_secret).unwrap();
-        SymmetricKey { key: hss[..defines::SYMMETRIC_ALGORITHM().key_len()].to_vec()}
+        SymmetricKey { key: hss[0..defines::SYMMETRIC_ALGORITHM_KEY_LEN].try_into().unwrap()}
     }
 
     pub fn encrypt(&self, data: &[u8]) -> Ciphertext

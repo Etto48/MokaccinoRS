@@ -2,12 +2,12 @@ use std::{net::{UdpSocket, SocketAddr}, sync::{Arc, mpsc::Sender, RwLock}};
 
 use serializable::Serializable;
 
-use crate::{network::{Packet, Content, ConnectionList}, config::{Config, defines}, log::{Logger, MessageKind}};
+use crate::{network::{Packet, Content, ConnectionList, SecurePacket}, config::{Config, defines}, log::{Logger, MessageKind}};
 
 pub fn run(
     running: Arc<RwLock<bool>>,
     socket: Arc<UdpSocket>,
-    _connection_list: Arc<RwLock<ConnectionList>>,
+    connection_list: Arc<RwLock<ConnectionList>>,
     log: Logger,
     text_queue: Sender<(Packet,SocketAddr)>, 
     connection_queue: Sender<(Packet,SocketAddr)>,
@@ -22,9 +22,9 @@ pub fn run(
         {
             Ok((len,from)) => 
             {
-                let (packet,packet_size) = match Packet::deserialize(&buffer[..len])
+                let (secure_packet,packet_size) = match SecurePacket::deserialize(&buffer[..len])
                 {
-                    Ok(p) => p,
+                    Ok(sp) => sp,
                     Err(e) => 
                     {
                         log.log(MessageKind::Error, &format!("Error deserializing packet: {}",e))?;
@@ -36,6 +36,31 @@ pub fn run(
                     log.log(MessageKind::Error, &format!("Packet size mismatch: {} != {}",packet_size,len))?;
                     continue;
                 }
+                let packet = match secure_packet
+                {
+                    SecurePacket::Plaintext(p) => p,
+                    SecurePacket::Ciphertext(c) => 
+                    {
+                        let connection_list = connection_list.read().map_err(|e|e.to_string())?;
+                        if let Some(info) = connection_list.get_info_from_addr(&from)
+                        {
+                            match c.to_packet(&info.crypto_session_info.symmetric_key)
+                            {
+                                Ok(p) => p,
+                                Err(e) => {
+                                    log.log(MessageKind::Error, &format!("Error decrypting packet: {}",e))?;
+                                    continue;
+                                },
+                            }
+                        }
+                        else
+                        {
+                            log.log(MessageKind::Error, &format!("Unknown user {} sent an encrypted message",from))?;
+                            continue;
+                        }
+                        
+                    }
+                };
                 //log.log(MessageKind::Event, &format!("Received {:?} from {}", packet, from))?;
                 let queue = match &packet.content {
                     Content::Text(_,_) |

@@ -65,23 +65,30 @@ fn get_field_types(fields: &syn::Fields) -> Vec<syn::Type>
     }
 }
 
-fn build_serialize_body(fields: &syn::Fields, prepend_self: bool) -> proc_macro2::TokenStream
+fn build_serialize_body(fields: &syn::Fields, prepend_self: bool, use_ref: bool) -> proc_macro2::TokenStream
 {
     let field_names = get_field_names(fields);
     match fields
     {
         syn::Fields::Named(_fields) => {
-            if prepend_self
+            match (prepend_self, use_ref)
             {
-                quote!{
-                    #(bytes.extend(self.#field_names.serialize());)*   
-                }
-            }
-            else
-            {
-                quote!{
-                    #(bytes.extend(#field_names.serialize());)*   
-                }
+                (true,true) =>
+                    quote!{
+                        #(bytes.extend(Serializable::serialize(&self.#field_names));)*   
+                    },
+                (false,true) =>
+                    quote!{
+                        #(bytes.extend(Serializable::serialize(&#field_names));)*   
+                    },
+                (true,false) =>
+                    quote!{
+                        #(bytes.extend(Serializable::serialize(self.#field_names));)*   
+                    },
+                (false,false) =>
+                    quote!{
+                        #(bytes.extend(Serializable::serialize(#field_names));)*   
+                    },
             }
         },
         syn::Fields::Unnamed(fields) => 
@@ -92,17 +99,24 @@ fn build_serialize_body(fields: &syn::Fields, prepend_self: bool) -> proc_macro2
                 (name, ty)
             });
             let field_numbers = (0..fields.len()).map(syn::Index::from);
-            if prepend_self
+            match (prepend_self, use_ref)
             {
-                quote! {
-                    #(bytes.extend(self.#field_numbers.serialize());)*    
-                }
-            }
-            else
-            {
-                quote! {
-                    #(bytes.extend(#field_names.serialize());)*    
-                }
+                (true, true) => 
+                    quote! {
+                        #(bytes.extend(Serializable::serialize(&self.#field_numbers));)*    
+                    },
+                (false, true) => 
+                    quote! {
+                        #(bytes.extend(Serializable::serialize(&#field_names));)*    
+                    },
+                (true, false) => 
+                    quote! {
+                        #(bytes.extend(Serializable::serialize(self.#field_numbers));)*    
+                    },
+                (false, false) => 
+                    quote! {
+                        #(bytes.extend(Serializable::serialize(#field_names));)*    
+                    },
             }
         },
         syn::Fields::Unit => 
@@ -120,14 +134,14 @@ fn build_deserialize_body(fields: &syn::Fields) -> proc_macro2::TokenStream
     {
         syn::Fields::Named(_fields) => {
             quote!{
-                #(let (#field_names,len) = <#field_types>::deserialize(&bytes[offset..])?;
+                #(let (#field_names,len) = <#field_types as Serializable>::deserialize(&bytes[offset..])?;
                 offset += len;)*
             }
         },
         syn::Fields::Unnamed(_fields) => 
         {
             quote! {
-                #(let (#field_names,len) = <#field_types>::deserialize(&bytes[offset..])?;
+                #(let (#field_names,len) = <#field_types as Serializable>::deserialize(&bytes[offset..])?;
                 offset += len;)*
             }
         },
@@ -206,7 +220,7 @@ fn impl_serializable(ast: &syn::DeriveInput) -> TokenStream
     {
         syn::Data::Struct(syn::DataStruct{fields,..}) => 
         {
-            let serialize_body = build_serialize_body(fields,true);
+            let serialize_body = build_serialize_body(fields,true, true);
             let deserialize_body = build_deserialize_body(fields);
             let constructor_body = build_constructor(fields, None);
             quote !
@@ -233,7 +247,7 @@ fn impl_serializable(ast: &syn::DeriveInput) -> TokenStream
             let variant_fields = variants.iter().map(|v| v.fields.clone());
             let variant_fields_serialization = variant_fields.clone().map(|fields|
             {
-                build_serialize_body(&fields, false)
+                build_serialize_body(&fields, false, false)
             });
             let variant_fields_deserialization = variant_fields.clone().map(|fields|
             {
