@@ -32,6 +32,8 @@ pub fn start(
 #[cfg(test)]
 mod tests
 {
+    use core::panic;
+
     use crate::{thread, network::ContactInfo, config::defines, crypto::{SignedContactInfo, CryptoConnectionInfo}};
     use super::*;
 
@@ -65,9 +67,15 @@ mod tests
         std::thread::sleep(defines::THREAD_QUEUE_TIMEOUT);
         if let Ok((content,dst)) = context.movable.sender_queue_rx.recv_timeout(defines::THREAD_QUEUE_TIMEOUT)
         {
-            assert_eq!(content,
-            Content::request_connection_from_config(&context.unmovable.config.read().unwrap(), remote_ecdhe_private_key.public_key()));
-            assert_eq!(dst,remote_address);
+            if let Content::RequestConnection(info) = content
+            {
+                let contact_info = info.into_contact_info(&remote_private_key.public_key()).unwrap();
+                assert_eq!(contact_info.name(),"Test");
+                assert_eq!(dst,remote_address);
+            }
+            else {
+                panic!("Wrong packet");
+            }
         }
         else {
             panic!("Connection timed out");

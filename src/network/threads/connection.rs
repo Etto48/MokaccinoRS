@@ -145,6 +145,10 @@ pub fn run(
                                     }
                                 }
                             }
+                            else
+                            {
+                                log.log(MessageKind::Error, &format!("Invalid signature from {}", from))?;
+                            }
                         }
                     },
                     Content::AcknowledgeConnection => 
