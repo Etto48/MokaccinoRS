@@ -21,9 +21,9 @@ impl PrivateKey
 
     pub fn sign(&self, data: &[u8]) -> Vec<u8>
     {
-        let mut signer = openssl::sign::Signer::new(openssl::hash::MessageDigest::sha3_512(), &self.key).unwrap();
-        let mut signature = vec![0;signer.len().unwrap()];
-        signer.sign_oneshot(&mut signature, data).unwrap();
+        let mut signer = openssl::sign::Signer::new(defines::MESSAGE_DIGEST(),&self.key).unwrap();
+        signer.update(data).unwrap();
+        let signature = signer.sign_to_vec().unwrap();
         signature
     }
 

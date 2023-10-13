@@ -3,6 +3,8 @@ use std::{error::Error, str::FromStr};
 use serde::{Serialize, Deserialize};
 use serializable::Serializable;
 
+use crate::config::defines;
+
 #[derive(Clone, Debug)]
 pub struct PublicKey
 {
@@ -14,13 +16,35 @@ impl PublicKey
 
     pub fn verify(&self, data: &[u8], signature: &[u8]) -> bool
     {
-        if let Ok(mut verifier) = openssl::sign::Verifier::new(openssl::hash::MessageDigest::sha3_512(), &self.key)
+        match openssl::sign::Verifier::new(defines::MESSAGE_DIGEST(),&self.key)
         {
-            verifier.verify_oneshot(signature, data).unwrap_or(false)
-        }
-        else
-        {
-            false
+            Ok(mut verifier) => 
+            {
+                match verifier.update(data)
+                {
+                    Ok(_) => 
+                    {
+                        match verifier.verify(signature)
+                        {
+                            Ok(_) => 
+                            {
+                                true
+                            },
+                            Err(e) => 
+                            {
+                                println!("Verify Error: {}",e);
+                                false
+                            },
+                        }
+                    },
+                    Err(e) => 
+                    {
+                        println!("Update Error: {}",e);
+                        false
+                    },
+                }
+            }
+            Err(_) => false
         }
     }
 }

@@ -21,7 +21,7 @@ impl Default for NetworkConfig
 {
     fn default() -> Self {
         NetworkConfig{
-            name: format!("Anonymous#{}", rand::random::<u64>()),
+            name: format!("Anonymous#{:x}", rand::random::<u64>()),
             port: 4848,
             whitelist: None,
             timeout_ms: 100,

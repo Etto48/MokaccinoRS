@@ -14,6 +14,7 @@ pub const MIN_GAIN: i32 = -32768;
 pub const MAX_GAIN: i32 = 32767;
 
 pub const ASYMMETRIC_KEY_GENERATOR: fn() -> Result<openssl::pkey::PKey<openssl::pkey::Private>, openssl::error::ErrorStack> = || openssl::pkey::PKey::ec_gen("secp521r1");
+pub const MESSAGE_DIGEST: fn() -> openssl::hash::MessageDigest = openssl::hash::MessageDigest::sha512;
 pub const SYMMETRIC_ALGORITHM: fn() -> openssl::symm::Cipher = openssl::symm::Cipher::aes_256_gcm;
 pub const SYMMETRIC_ALGORITHM_KEY_LEN: usize = 32;
 pub const SYMMETRIC_ALGORITHM_IV_LEN: usize = 12;

@@ -52,103 +52,116 @@ pub fn run(
                     {
                         if let Ok(unsafe_info) = signed_contact_info.info()
                         {
-                            let public_key = {
-                                let mut config = config.write().map_err(|e|e.to_string())?;
+                            let (public_key, mut add_to_known_hosts) = {
+                                let config = config.read().map_err(|e|e.to_string())?;
                                 if let Some(known_host) = config.network.known_hosts.get(unsafe_info.name())
                                 {
-                                    known_host.crypto_info().public_key.clone()
+                                    (known_host.crypto_info().public_key.clone(),false)
                                 }
                                 else
                                 {
-                                    config.network.known_hosts.insert(unsafe_info.name().to_owned(), LastingContactInfo::new(unsafe_info.name(), &unsafe_info.crypto_info().into_lasting()));
-                                    unsafe_info.crypto_info().public_key.clone()
+                                    (unsafe_info.crypto_info().public_key.clone(),true)
                                 }
                             };
-                            if let Ok(contact_info) = &signed_contact_info.into_contact_info(&public_key)
+                            match &signed_contact_info.into_contact_info(&public_key)
                             {
+                                Ok(contact_info) =>
                                 {
-                                    let connection_list = connection_list.read().map_err(|e|e.to_string())?;
-                                    if let Some(name) = connection_list.get_name(&from)
                                     {
-                                        if name == contact_info.name()
+                                        let connection_list = connection_list.read().map_err(|e|e.to_string())?;
+                                        if let Some(name) = connection_list.get_name(&from)
                                         {
-                                            // the other peer is already connected, maybe the ack sent from this peer was lost, send another ack
-                                            sender_queue.send((Content::AcknowledgeConnection, from)).map_err(|e|e.to_string())?;
-                                        }
-                                    }
-                                }
-                                if let Some((option_info, crypto_handshake_info, _last_seen, _strikes)) = pending_requests.get_mut(&from)
-                                {
-                                    // this peer started the connection and was expecting a response from the other peer
-                                    match option_info
-                                    {
-                                        Some(saved_contact_info) =>
-                                        {
-                                            // the other peer sent a duplicate request connection packet, perhaps our response was lost, repeat the response
-                                            if saved_contact_info == contact_info
+                                            if name == contact_info.name()
                                             {
-                                                // no info has changed, send the same response
-                                                let config_reader = config.read().map_err(|e|e.to_string())?;
-                                                sender_queue.send((Content::request_connection_from_config(&config_reader,crypto_handshake_info.local_ecdhe_key.public_key().clone()), from)).map_err(|e|e.to_string())?;
-                                            }
-                                        },
-                                        None =>
-                                        {
-                                            // this peer sent the initial request and the other peer responded, finalize the connection
-                                            let success = 
-                                            {
-                                                let mut connection_list = connection_list.write().map_err(|e|e.to_string())?;
-                                                crypto_handshake_info.remote_ecdhe_key = Some(contact_info.crypto_info().public_key.clone());
-                                                if let Ok(symmetric_key) = crypto_handshake_info.derive()
-                                                {
-                                                    connection_list.add(contact_info.name(), from, symmetric_key);
-                                                    true
-                                                }
-                                                else 
-                                                {
-                                                    false
-                                                }
-                                            };
-                                            if success
-                                            {
-                                                log.log(MessageKind::Event, &format!("Connection to {} established", contact_info.name()))?;
+                                                // the other peer is already connected, maybe the ack sent from this peer was lost, send another ack
                                                 sender_queue.send((Content::AcknowledgeConnection, from)).map_err(|e|e.to_string())?;
                                             }
-                                            else {
-                                                log.log(MessageKind::Error, &format!("Key exchange with {} failed", contact_info.name()))?;
-                                            }
-                                            pending_requests.remove(&from);
-                                            
                                         }
                                     }
+                                    if let Some((option_info, crypto_handshake_info, _last_seen, _strikes)) = pending_requests.get_mut(&from)
+                                    {
+                                        // this peer started the connection and was expecting a response from the other peer
+                                        match option_info
+                                        {
+                                            Some(saved_contact_info) =>
+                                            {
+                                                // the other peer sent a duplicate request connection packet, perhaps our response was lost, repeat the response
+                                                if saved_contact_info == contact_info
+                                                {
+                                                    // no info has changed, send the same response
+                                                    let config_reader = config.read().map_err(|e|e.to_string())?;
+                                                    sender_queue.send((Content::request_connection_from_config(&config_reader,crypto_handshake_info.local_ecdhe_key.public_key().clone()), from)).map_err(|e|e.to_string())?;
+                                                }
+                                            },
+                                            None =>
+                                            {
+                                                // this peer sent the initial request and the other peer responded, finalize the connection
+                                                let success = 
+                                                {
+                                                    let mut connection_list = connection_list.write().map_err(|e|e.to_string())?;
+                                                    crypto_handshake_info.remote_ecdhe_key = Some(contact_info.crypto_info().public_key.clone());
+                                                    if let Ok(symmetric_key) = crypto_handshake_info.derive()
+                                                    {
+                                                        connection_list.add(contact_info.name(), from, symmetric_key);
+                                                        true
+                                                    }
+                                                    else 
+                                                    {
+                                                        false
+                                                    }
+                                                };
+                                                if success
+                                                {
+                                                    log.log(MessageKind::Event, &format!("Connection to {} established", contact_info.name()))?;
+                                                    sender_queue.send((Content::AcknowledgeConnection, from)).map_err(|e|e.to_string())?;
+                                                }
+                                                else {
+                                                    log.log(MessageKind::Error, &format!("Key exchange with {} failed", contact_info.name()))?;
+                                                }
+                                                pending_requests.remove(&from);
+                                                
+                                            }
+                                        }
+                                    }
+                                    else 
+                                    {
+                                        // the other peer is requesting the connection
+                                        let config_reader = config.read().map_err(|e|e.to_string())?;
+                                        let mut accept_connection = true;
+                                        if let Some(whitelist) = &config_reader.network.whitelist
+                                        {
+                                            accept_connection = whitelist.iter().any(|name| name == contact_info.name())
+                                        }
+                                        if accept_connection
+                                        {
+                                            // accept the connection
+                                            let private_ecdhe_key = PrivateKey::new();
+                                            let public_ecdhe_key = private_ecdhe_key.public_key();
+                                            let crypto_handshake_info = CryptoHandshakeInfo {
+                                                local_ecdhe_key: private_ecdhe_key,
+                                                remote_ecdhe_key: Some(contact_info.crypto_info().ecdhe_public_key.clone()),
+                                            };
+                                            sender_queue.send((Content::request_connection_from_config(&config_reader, public_ecdhe_key), from)).map_err(|e|e.to_string())?;
+                                            pending_requests.insert(from, (Some(contact_info.clone()),crypto_handshake_info,Instant::now(),0));
+                                        }
+                                        else {
+                                            add_to_known_hosts = false;
+                                        }
+                                    }
+                                    if add_to_known_hosts
+                                    {
+                                        let mut config = config.write().map_err(|e|e.to_string())?;
+                                        config.network.known_hosts.insert(unsafe_info.name().to_string(),LastingContactInfo::new(
+                                            unsafe_info.name(),
+                                            &unsafe_info.crypto_info().into_lasting(),
+                                        ));
+                                    }
                                 }
-                                else 
+                                Err(e) => 
                                 {
-                                    // the other peer is requesting the connection
-                                    let config_reader = config.read().map_err(|e|e.to_string())?;
-                                    let mut accept_connection = true;
-                                    if let Some(whitelist) = &config_reader.network.whitelist
-                                    {
-                                        accept_connection = whitelist.iter().any(|name| name == contact_info.name())
-                                    }
-                                    if accept_connection
-                                    {
-                                        // accept the connection
-                                        let private_ecdhe_key = PrivateKey::new();
-                                        let public_ecdhe_key = private_ecdhe_key.public_key();
-                                        let crypto_handshake_info = CryptoHandshakeInfo {
-                                            local_ecdhe_key: private_ecdhe_key,
-                                            remote_ecdhe_key: Some(contact_info.crypto_info().ecdhe_public_key.clone()),
-                                        };
-                                        sender_queue.send((Content::request_connection_from_config(&config_reader, public_ecdhe_key), from)).map_err(|e|e.to_string())?;
-                                        pending_requests.insert(from, (Some(contact_info.clone()),crypto_handshake_info,Instant::now(),0));
-                                    }
+                                    log.log(MessageKind::Error, &format!("Invalid signature from {}: {}", from, e))?;
                                 }
-                            }
-                            else
-                            {
-                                log.log(MessageKind::Error, &format!("Invalid signature from {}", from))?;
-                            }
+                            };
                         }
                     },
                     Content::AcknowledgeConnection => 
