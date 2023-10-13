@@ -99,7 +99,7 @@ pub fn run(
                                                 let success = 
                                                 {
                                                     let mut connection_list = connection_list.write().map_err(|e|e.to_string())?;
-                                                    crypto_handshake_info.remote_ecdhe_key = Some(contact_info.crypto_info().public_key.clone());
+                                                    crypto_handshake_info.remote_ecdhe_key = Some(contact_info.crypto_info().ecdhe_public_key.clone());
                                                     if let Ok(symmetric_key) = crypto_handshake_info.derive()
                                                     {
                                                         connection_list.add(contact_info.name(), from, symmetric_key);
