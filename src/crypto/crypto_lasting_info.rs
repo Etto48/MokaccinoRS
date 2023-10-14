@@ -1,4 +1,4 @@
-use serde::{Serialize, ser::SerializeSeq};
+use serde::{Serialize, Deserialize};
 use serializable::Serializable;
 
 use crate::config;
@@ -34,39 +34,17 @@ impl Serialize for CryptoLastingInfo
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
     where S: serde::Serializer
     {
-        let mut seq = serializer.serialize_seq(Some(1))?;
-        seq.serialize_element(&self.public_key)?;
-        seq.end()
+        Serialize::serialize(&self.public_key, serializer)
     }
 }
 
-impl<'de> serde::Deserialize<'de> for CryptoLastingInfo
+impl<'de> Deserialize<'de> for CryptoLastingInfo
 {
     fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
     where D: serde::Deserializer<'de>
     {
-        struct CryptoLastingInfoVisitor;
-
-        impl<'de> serde::de::Visitor<'de> for CryptoLastingInfoVisitor
-        {
-            type Value = CryptoLastingInfo;
-
-            fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result
-            {
-                formatter.write_str("struct CryptoInfo")
-            }
-
-            fn visit_seq<A>(self, mut seq: A) -> Result<Self::Value, A::Error>
-            where A: serde::de::SeqAccess<'de>
-            {
-                let public_key = seq.next_element()?
-                    .ok_or_else(|| serde::de::Error::invalid_length(0, &self))?;
-
-                Ok(CryptoLastingInfo::new(&public_key))
-            }
-        }
-
-        deserializer.deserialize_seq(CryptoLastingInfoVisitor)
+        let public_key = <PublicKey as Deserialize<'de>>::deserialize(deserializer)?;
+        Ok(Self::new(&public_key))
     }
 }
 

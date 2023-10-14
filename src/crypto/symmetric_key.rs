@@ -21,7 +21,7 @@ impl SymmetricKey
 
     pub fn from_shared_secret(shared_secret: &[u8]) -> Self
     {
-        let hss = openssl::hash::hash(openssl::hash::MessageDigest::sha3_512(), shared_secret).unwrap();
+        let hss = openssl::hash::hash(defines::KEY_DERIVATION_MD(), shared_secret).unwrap();
         SymmetricKey { key: hss[0..defines::SYMMETRIC_ALGORITHM_KEY_LEN].try_into().unwrap()}
     }
 

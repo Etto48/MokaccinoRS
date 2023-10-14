@@ -85,7 +85,9 @@ pub fn run(
                 match e.kind() {
                     std::io::ErrorKind::TimedOut |
                     std::io::ErrorKind::WouldBlock => {}
-                    e => {println!("Error receiving from socket: {e}");}
+                    e => {
+                        log.log(MessageKind::Error, &format!("Error receiving packet: {}",e)).map_err(|e|e.to_string())?;
+                    }
                 }
             }
         }
