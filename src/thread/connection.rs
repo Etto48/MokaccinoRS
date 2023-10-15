@@ -70,7 +70,7 @@ mod tests
             if let Content::RequestConnection(info) = content
             {
                 let contact_info = info.into_contact_info(&remote_private_key.public_key()).unwrap();
-                assert_eq!(contact_info.name(),"Test");
+                assert_eq!(contact_info.name(),context.unmovable.config.read().unwrap().network.name);
                 assert_eq!(dst,remote_address);
             }
             else {
