@@ -1,4 +1,4 @@
-name: Rust-Linux
+name: Rust-Windwos
 
 on:
   push:
@@ -12,12 +12,10 @@ env:
 jobs:
   build:
 
-    runs-on: ubuntu-latest
+    runs-on: windows-latest
 
     steps:
     - uses: actions/checkout@v3
-    - name: Install Requirements
-      run: sudo apt-get install -y libasound2-dev
     - name: Build
       run: cargo build --verbose
     - name: Run tests
