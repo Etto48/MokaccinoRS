@@ -1,6 +1,6 @@
 use std::{sync::{Arc, RwLock, mpsc::{Receiver, Sender}, Mutex}, net::SocketAddr};
 
-use crate::{network::{ConnectionList, Packet, Content, ConnectionRequest}, config::Config, text::{TextList, TextRequest}, log::{Logger, MessageKind}, voice::VoiceRequest};
+use crate::{network::{ConnectionList, Packet, Content, ConnectionRequest}, config::Config, text::{TextList, TextRequest}, log::{Logger, MessageKind}, voice::VoiceRequest, ui::UiNotification};
 
 pub struct Context
 {
@@ -24,6 +24,8 @@ pub struct MovableContext
     pub voice_requests_tx: Sender<VoiceRequest>,
     /// changing this in a thread diffrerent from the voice thread will cause a lot of errors
     pub voice_interlocutor: Arc<Mutex<Option<SocketAddr>>>,
+    pub ui_notifications_rx: Receiver<UiNotification>,
+    pub ui_notifications_tx: Sender<UiNotification>,
 
     pub connection_queue_rx: Receiver<(Packet,SocketAddr)>,
     pub text_queue_rx: Receiver<(Packet,SocketAddr)>,
@@ -75,6 +77,7 @@ impl Context
         let (text_requests_tx, text_requests_rx) = std::sync::mpsc::channel::<TextRequest>();
         let (voice_requests_tx, voice_requests_rx) = std::sync::mpsc::channel::<VoiceRequest>();
         let voice_interlocutor = Arc::new(Mutex::new(None));
+        let (ui_notifications_tx, ui_notifications_rx) = std::sync::mpsc::channel::<UiNotification>();
 
         let (text_queue_tx, text_queue_rx) = std::sync::mpsc::channel::<(Packet,SocketAddr)>();
         let (connection_queue_tx, connection_queue_rx) = std::sync::mpsc::channel::<(Packet,SocketAddr)>();
@@ -96,6 +99,8 @@ impl Context
                 voice_requests_rx,
                 voice_requests_tx,
                 voice_interlocutor,
+                ui_notifications_rx,
+                ui_notifications_tx,
 
                 connection_queue_rx,
                 text_queue_rx,

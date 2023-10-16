@@ -1,6 +1,6 @@
 use std::{thread::JoinHandle, sync::{mpsc::{Receiver, Sender}, Arc, RwLock, Mutex}, net::SocketAddr};
 
-use crate::{voice::{threads::voice, VoiceRequest}, network::{Packet, Content, ConnectionList}, config::Config, log::Logger};
+use crate::{voice::{threads::voice, VoiceRequest}, network::{Packet, Content, ConnectionList}, config::Config, log::Logger, ui::ui_notification::UiNotification};
 
 pub fn start(
     running: Arc<RwLock<bool>>,
@@ -8,6 +8,7 @@ pub fn start(
     log: Logger,
     requests: Receiver<VoiceRequest>,
     voice_interlocutor: Arc<Mutex<Option<SocketAddr>>>,
+    ui_notifications: Sender<UiNotification>,
     voice_queue: Receiver<(Packet,SocketAddr)>, 
     sender_queue: Sender<(Content,SocketAddr)>,
     config: Arc<RwLock<Config>>) -> Vec<JoinHandle<Result<(),String>>>
@@ -20,6 +21,7 @@ pub fn start(
             log,
             requests,
             voice_interlocutor,
+            ui_notifications,
             voice_queue, 
             sender_queue, 
             config)

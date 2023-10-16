@@ -1,4 +1,4 @@
-use std::{sync::{Arc, RwLock, mpsc::Sender, Mutex}, time::Duration, net::{SocketAddr, IpAddr}};
+use std::{sync::{Arc, RwLock, mpsc::{Sender, Receiver}, Mutex}, time::Duration, net::{SocketAddr, IpAddr}};
 
 use chrono::{Local, DateTime};
 use cpal::traits::{HostTrait, DeviceTrait};
@@ -8,6 +8,8 @@ use crate::{network::{ConnectionList, ConnectionRequest}, text::{TextList, TextR
 
 use crate::load_image;
 
+use super::UiNotification;
+
 pub fn run(
     connection_list: Arc<RwLock<ConnectionList>>,
     text_list: Arc<RwLock<TextList>>,
@@ -16,6 +18,7 @@ pub fn run(
     text_requests: Sender<TextRequest>,
     voice_requests: Sender<VoiceRequest>,
     voice_interlocutor: Arc<Mutex<Option<SocketAddr>>>,
+    ui_notifications: Receiver<UiNotification>,
 
     unmovable_context: UnmovableContext,
 )
@@ -37,6 +40,7 @@ pub fn run(
             text_requests,
             voice_requests,
             voice_interlocutor,
+            ui_notifications,
 
             unmovable_context,
             cc
@@ -62,6 +66,8 @@ pub struct UI
     text_requests: Sender<TextRequest>,
     voice_requests: Sender<VoiceRequest>,
     voice_interlocutor: Arc<Mutex<Option<SocketAddr>>>,
+
+    ui_notifications: Receiver<UiNotification>,
 
     unmovable_context: UnmovableContext,
 
@@ -89,6 +95,7 @@ impl UI
         text_requests: Sender<TextRequest>,
         voice_requests: Sender<VoiceRequest>,
         voice_interlocutor: Arc<Mutex<Option<SocketAddr>>>,
+        ui_notifications: Receiver<UiNotification>,
         unmovable_context: UnmovableContext,
         cc: &CreationContext
     ) -> Self
@@ -132,6 +139,7 @@ impl UI
             text_requests,
             voice_requests,
             voice_interlocutor,
+            ui_notifications,
             unmovable_context,
             show_new_connection_dialog: false,
             show_settings_dialog: false,
@@ -215,7 +223,9 @@ impl UI
                     c1.cmp(c2)    
                 });
                 { // add system button
-                    let mut button = Button::new("System");
+                    let has_new_messages = self.log.has_new_messages().unwrap();
+                    let button_text = if has_new_messages {"System*"} else {"System"};
+                    let mut button = Button::new(button_text);
                     if self.active_contact == None
                     {
                         button = button.fill(accent_color);
@@ -230,9 +240,25 @@ impl UI
                 }
                 for c in contacts
                 {
+                    let has_new_messages = 
+                    {
+                        let text_list = self.text_list.read().expect("Pls don't crush");
+                        text_list.has_new_messages(&c)
+                    };
+                    let button_text = 
+                    {
+                        if has_new_messages
+                        {
+                            format!("{}*",c)
+                        }
+                        else 
+                        {
+                            c.clone()    
+                        }
+                    };
                     ui.horizontal(|ui|{
                         ui.style_mut().spacing.item_spacing.x = 4.0;
-                        let mut button = Button::new(&c)
+                        let mut button = Button::new(&button_text)
                         .rounding(Rounding{nw: 3.0, ne: 0.0, sw: 3.0, se: 0.0});
                         if self.active_contact == Some(c.clone())
                         {
@@ -297,7 +323,7 @@ impl UI
             //chat
             if let Some(c) = &self.active_contact
             {
-                let text_list = self.text_list.read().expect("I sure hope there is no poisoning here");
+                let mut text_list = self.text_list.write().expect("I sure hope there is no poisoning here");
                 if let Some(messages) = text_list.get(c)
                 {
                     for m in messages
@@ -464,11 +490,214 @@ impl UI
             });
         });
     }
+
+    fn show_settings(
+        &mut self, 
+        ctx: &egui::Context, 
+        margin: f32, 
+        background_color: egui::Color32, 
+        accent_color: egui::Color32)
+    {
+        let mut save_config = false;
+        egui::Window::new("Settings")
+        .frame(Frame{
+            inner_margin: Margin::same(margin),
+            outer_margin: Margin::same(0.0),
+            rounding: Rounding::same(5.0),
+            fill: background_color,
+            stroke: Stroke::new(1.0, accent_color),
+            ..Default::default()
+        })
+        .collapsible(false)
+        .resizable(false)
+        .anchor(Align2::CENTER_CENTER, Vec2::new(0.0,0.0))
+        .show(ctx,|ui|{
+            let mut config = self.unmovable_context.config.write().unwrap();
+            {//Network
+                ui.label("Network");
+                ui.group(|ui|{
+                    ui.set_width(ui.available_width());
+                    ui.label("Name");
+                    ui.add_sized(
+                        Vec2::new(ui.available_width(),20.0),
+                        TextEdit::singleline(&mut config.network.name));
+                    ui.label("Port");
+                    ui.add_sized(
+                        Vec2::new(ui.available_width(),20.0),
+                        TextEdit::singleline(&mut self.settings_port_buffer));
+                    if let Ok(port) = self.settings_port_buffer.parse::<u16>()
+                    {
+                        config.network.port = port;
+                    }
+                });
+            }
+            {//Voice
+                ui.label("Voice");
+                ui.group(|ui|{
+
+                    ui.style_mut().spacing.slider_width = ui.available_width() - 10.0;
+                    ui.style_mut().spacing.combo_width = ui.available_width() - 10.0;
+
+                    ui.label("Input device");
+                    let input_selected_text = 
+                        if let Some(name) = config.voice.input_device.clone()
+                        {name} else {"Default".to_string()};
+                    ComboBox::new(
+                        "InputDeviceComboBox",
+                        "",    
+                    )
+                    .selected_text(input_selected_text)
+                    .show_ui(ui, |ui|{
+                        for name in self.input_devices.iter()
+                        {
+                            if ui.selectable_value(&mut config.voice.input_device, Some(name.clone()), name.clone()).clicked()
+                            {
+                                if name == "Default"
+                                {
+                                    config.voice.input_device = None;
+                                }
+                                else
+                                {
+                                    config.voice.input_device = Some(name.clone());
+                                }
+                                self.voice_requests.send(VoiceRequest::ReloadConfiguration).unwrap();
+                            }
+                        }
+                    });
+                    ui.label("Output device");
+                    let output_selected_text = 
+                        if let Some(name) = config.voice.output_device.clone()
+                        {name} else {"Default".to_string()};
+                    ComboBox::new(
+                        "OutputDeviceComboBox",
+                        "",
+                    ).selected_text(output_selected_text)
+                    .show_ui(ui, |ui|{
+                        for name in self.output_devices.iter()
+                        {
+                            if ui.selectable_value(&mut config.voice.output_device, Some(name.clone()), name.clone()).clicked()
+                            {
+                                if name == "Default"
+                                {
+                                    config.voice.output_device = None;
+                                }
+                                else
+                                {
+                                    config.voice.output_device = Some(name.clone());
+                                }
+                                self.voice_requests.send(VoiceRequest::ReloadConfiguration).unwrap();
+                            }
+                        }
+                    });
+                    ui.label("Gain");
+                    ui.add(
+                        Slider::new(
+                        &mut config.voice.gain,
+                        defines::MIN_GAIN..=defines::MAX_GAIN)
+                        .show_value(false)
+                        .clamp_to_range(true));
+                });
+            }
+            if ui.add_sized(
+                Vec2::new(ui.available_width(),20.0),
+                Button::new("Close")).clicked()
+            {
+                self.show_settings_dialog = false;
+                save_config = true;
+            }
+        });
+        if save_config
+        {
+            self.save_config();
+        }
+    }
+
+    fn show_new_connection(
+        &mut self, 
+        ctx: &egui::Context, 
+        margin: f32, 
+        background_color: egui::Color32, 
+        accent_color: egui::Color32)
+    {
+        let text_color_addr = 
+            if self.validate_new_connection_address() {None} else {Some(egui::Color32::RED)};
+        let text_color_port = 
+            if self.validate_new_connection_port() {None} else {Some(egui::Color32::RED)};
+        egui::Window::new("Connect")
+        .frame(Frame{
+            inner_margin: Margin::same(margin),
+            outer_margin: Margin::same(0.0),
+            rounding: Rounding::same(5.0),
+            fill: background_color,
+            stroke: Stroke::new(1.0, accent_color),
+            ..Default::default()
+        })
+        .collapsible(false)
+        .resizable(false)
+        .anchor(Align2::CENTER_CENTER, Vec2::new(0.0,0.0))
+        .show(ctx,|ui|{
+            ui.horizontal(|ui|{
+                ui.add_sized(Vec2::new(250.0,20.0),TextEdit::singleline(&mut self.new_connection_address_buffer)
+                .hint_text("Address")
+                .text_color_opt(text_color_addr));
+                ui.add_sized(Vec2::new(ui.available_width(),20.0),TextEdit::singleline(&mut self.new_connection_port_buffer)
+                .hint_text("Port")
+                .text_color_opt(text_color_port));
+            });
+            ui.horizontal(|ui|{
+                let mut close_window = false;
+                
+                if ui.add_sized(
+                    Vec2::new(ui.available_width()/2.0,20.0),
+                    Button::new("Connect").fill(accent_color))
+                    .clicked() ||
+                    ui.input(|i| i.key_pressed(Key::Enter))
+                {
+                    let address_string = format!("{}:{}",self.new_connection_address_buffer,self.new_connection_port_buffer);
+                    if self.validate_new_connection_address() && self.validate_new_connection_port()
+                    {
+                        match address_string.parse::<SocketAddr>() {
+                            Ok(address) => 
+                            {
+                                self.connection_requests.send(ConnectionRequest::Connect(address)).expect("Please don't crush now");
+                                close_window = true;
+                            },
+                            Err(_) => {
+                                //this should not be rachable but just in case, ingnore the input
+                            },
+                        }
+                    }   
+                }
+                if ui.add_sized(
+                    Vec2::new(ui.available_width(),20.0),
+                    Button::new("Cancel")).clicked() ||
+                    ui.input(|i| i.key_pressed(Key::Escape))
+                {
+                    close_window = true;
+                }
+                if close_window
+                {
+                    self.new_connection_address_buffer.clear();
+                    self.new_connection_port_buffer.clear();
+                    self.show_new_connection_dialog = false;
+                }
+            });
+        });
+    }
+
+    fn handle_notifications(&mut self)
+    {
+        while let Ok(_notification) = self.ui_notifications.try_recv()
+        {
+
+        }
+    }
 }
 
 impl eframe::App for UI
 {
     fn update(&mut self, ctx: &egui::Context, frame: &mut eframe::Frame) {
+        self.handle_notifications();
         let margin = 10.0;
         let size = frame.info().window_info.size;
         let image_size = 14.0;
@@ -530,42 +759,18 @@ impl eframe::App for UI
                 let left_group_min_width = 150.0 - 2.0*group_margin;
                 ui.vertical(|ui|{
                     ui.group(|ui|{
-                        self.add_contacts(
-                            ui,
-                            size, 
-                            group_margin, 
-                            input_height, 
-                            left_group_width, 
-                            left_group_min_width, 
-                            accent_color
-                        )
+                        self.add_contacts(ui,size, group_margin, input_height, left_group_width, left_group_min_width, accent_color)
                     });
                     ui.group(|ui|{
-                        self.add_actions(
-                            ui, 
-                            left_group_width, 
-                            left_group_min_width, 
-                            accent_color, 
-                            settings_image, 
-                            voice_image
-                        )
+                        self.add_actions(ui, left_group_width, left_group_min_width, accent_color, settings_image, voice_image)
                     });
                 });
                 ui.vertical(|ui|{
                     ui.group(|ui|{
-                        self.add_chat(
-                            ui, 
-                            size, 
-                            group_margin, 
-                            input_height, 
-                            text_color
-                        )
+                        self.add_chat(ui, size, group_margin, input_height, text_color)
                     });
                     ui.group(|ui|{
-                        self.add_input(
-                            ui, 
-                            send_image
-                        )
+                        self.add_input(ui, send_image)
                     });
                 });
             });
@@ -573,186 +778,12 @@ impl eframe::App for UI
 
         if self.show_new_connection_dialog
         {
-            let text_color_addr = 
-                if self.validate_new_connection_address() {None} else {Some(egui::Color32::RED)};
-            let text_color_port = 
-                if self.validate_new_connection_port() {None} else {Some(egui::Color32::RED)};
-            egui::Window::new("Connect")
-            .frame(Frame{
-                inner_margin: Margin::same(margin),
-                outer_margin: Margin::same(0.0),
-                rounding: Rounding::same(5.0),
-                fill: background_color,
-                stroke: Stroke::new(1.0, accent_color),
-                ..Default::default()
-            })
-            .collapsible(false)
-            .resizable(false)
-            .anchor(Align2::CENTER_CENTER, Vec2::new(0.0,0.0))
-            .show(ctx,|ui|{
-                ui.horizontal(|ui|{
-                    ui.add_sized(Vec2::new(250.0,20.0),TextEdit::singleline(&mut self.new_connection_address_buffer)
-                    .hint_text("Address")
-                    .text_color_opt(text_color_addr));
-                    ui.add_sized(Vec2::new(ui.available_width(),20.0),TextEdit::singleline(&mut self.new_connection_port_buffer)
-                    .hint_text("Port")
-                    .text_color_opt(text_color_port));
-                });
-                ui.horizontal(|ui|{
-                    let mut close_window = false;
-                    
-                    if ui.add_sized(
-                        Vec2::new(ui.available_width()/2.0,20.0),
-                        Button::new("Connect").fill(accent_color))
-                        .clicked() ||
-                        ui.input(|i| i.key_pressed(Key::Enter))
-                    {
-                        let address_string = format!("{}:{}",self.new_connection_address_buffer,self.new_connection_port_buffer);
-                        if self.validate_new_connection_address() && self.validate_new_connection_port()
-                        {
-                            match address_string.parse::<SocketAddr>() {
-                                Ok(address) => 
-                                {
-                                    self.connection_requests.send(ConnectionRequest::Connect(address)).expect("Please don't crush now");
-                                    close_window = true;
-                                },
-                                Err(_) => {
-                                    //this should not be rachable but just in case, ingnore the input
-                                },
-                            }
-                        }   
-                    }
-                    if ui.add_sized(
-                        Vec2::new(ui.available_width(),20.0),
-                        Button::new("Cancel")).clicked() ||
-                        ui.input(|i| i.key_pressed(Key::Escape))
-                    {
-                        close_window = true;
-                    }
-                    if close_window
-                    {
-                        self.new_connection_address_buffer.clear();
-                        self.new_connection_port_buffer.clear();
-                        self.show_new_connection_dialog = false;
-                    }
-                });
-            });
+            self.show_new_connection(ctx, margin, background_color, accent_color);
         }
 
         if self.show_settings_dialog
         {
-            let mut save_config = false;
-            egui::Window::new("Settings")
-            .frame(Frame{
-                inner_margin: Margin::same(margin),
-                outer_margin: Margin::same(0.0),
-                rounding: Rounding::same(5.0),
-                fill: background_color,
-                stroke: Stroke::new(1.0, accent_color),
-                ..Default::default()
-            })
-            .collapsible(false)
-            .resizable(false)
-            .anchor(Align2::CENTER_CENTER, Vec2::new(0.0,0.0))
-            .show(ctx,|ui|{
-                let mut config = self.unmovable_context.config.write().unwrap();
-                {//Network
-                    ui.label("Network");
-                    ui.group(|ui|{
-                        ui.set_width(ui.available_width());
-                        ui.label("Name");
-                        ui.add_sized(
-                            Vec2::new(ui.available_width(),20.0),
-                            TextEdit::singleline(&mut config.network.name));
-                        ui.label("Port");
-                        ui.add_sized(
-                            Vec2::new(ui.available_width(),20.0),
-                            TextEdit::singleline(&mut self.settings_port_buffer));
-                        if let Ok(port) = self.settings_port_buffer.parse::<u16>()
-                        {
-                            config.network.port = port;
-                        }
-                    });
-                }
-                {//Voice
-                    ui.label("Voice");
-                    ui.group(|ui|{
-
-                        ui.style_mut().spacing.slider_width = ui.available_width() - 10.0;
-                        ui.style_mut().spacing.combo_width = ui.available_width() - 10.0;
-
-                        ui.label("Input device");
-                        let input_selected_text = 
-                            if let Some(name) = config.voice.input_device.clone()
-                            {name} else {"Default".to_string()};
-                        ComboBox::new(
-                            "InputDeviceComboBox",
-                            "",    
-                        )
-                        .selected_text(input_selected_text)
-                        .show_ui(ui, |ui|{
-                            for name in self.input_devices.iter()
-                            {
-                                if ui.selectable_value(&mut config.voice.input_device, Some(name.clone()), name.clone()).clicked()
-                                {
-                                    if name == "Default"
-                                    {
-                                        config.voice.input_device = None;
-                                    }
-                                    else
-                                    {
-                                        config.voice.input_device = Some(name.clone());
-                                    }
-                                    self.voice_requests.send(VoiceRequest::ReloadConfiguration).unwrap();
-                                }
-                            }
-                        });
-                        ui.label("Output device");
-                        let output_selected_text = 
-                            if let Some(name) = config.voice.output_device.clone()
-                            {name} else {"Default".to_string()};
-                        ComboBox::new(
-                            "OutputDeviceComboBox",
-                            "",
-                        ).selected_text(output_selected_text)
-                        .show_ui(ui, |ui|{
-                            for name in self.output_devices.iter()
-                            {
-                                if ui.selectable_value(&mut config.voice.output_device, Some(name.clone()), name.clone()).clicked()
-                                {
-                                    if name == "Default"
-                                    {
-                                        config.voice.output_device = None;
-                                    }
-                                    else
-                                    {
-                                        config.voice.output_device = Some(name.clone());
-                                    }
-                                    self.voice_requests.send(VoiceRequest::ReloadConfiguration).unwrap();
-                                }
-                            }
-                        });
-                        ui.label("Gain");
-                        ui.add(
-                            Slider::new(
-                            &mut config.voice.gain,
-                            defines::MIN_GAIN..=defines::MAX_GAIN)
-                            .show_value(false)
-                            .clamp_to_range(true));
-                    });
-                }
-                if ui.add_sized(
-                    Vec2::new(ui.available_width(),20.0),
-                    Button::new("Close")).clicked()
-                {
-                    self.show_settings_dialog = false;
-                    save_config = true;
-                }
-            });
-            if save_config
-            {
-                self.save_config();
-            }
+            self.show_settings(ctx, margin, background_color, accent_color);
         }
 
         ctx.request_repaint_after(Duration::from_millis(defines::UPDATE_UI_INTERVAL_MS));

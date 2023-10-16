@@ -3,7 +3,7 @@ use std::{sync::{mpsc::{Receiver, Sender, RecvTimeoutError}, Arc, RwLock, Mutex,
 use cpal::{traits::{HostTrait, DeviceTrait, StreamTrait}, Device, Host};
 use rubato::Resampler;
 
-use crate::{network::{Packet, Content, ConnectionList}, config::{Config, defines}, log::{Logger, MessageKind}, voice::{VoiceRequest, VoiceContext}};
+use crate::{network::{Packet, Content, ConnectionList}, config::{Config, defines}, log::{Logger, MessageKind}, voice::{VoiceRequest, VoiceContext}, ui::UiNotification};
 
 pub fn run(
     running: Arc<RwLock<bool>>,
@@ -11,6 +11,7 @@ pub fn run(
     log: Logger,
     requests: Receiver<VoiceRequest>,
     voice_interlocutor: Arc<Mutex<Option<SocketAddr>>>,
+    ui_notifications: Sender<UiNotification>,
     voice_queue: Receiver<(Packet,SocketAddr)>, 
     sender_queue: Sender<(Content,SocketAddr)>,
     config: Arc<RwLock<Config>>) -> Result<(),String>
@@ -56,7 +57,14 @@ pub fn run(
                             }
                         }
                         else {
-                            log.log(MessageKind::Error, &format!("Received voice packet from {} without active voice chat", from))?;
+                            if let Some(from_name) = connection_list.read().map_err(|e|e.to_string())?.get_name(&from)
+                            {
+                                ui_notifications.send(UiNotification::IncomingCall(from_name.to_string())).map_err(|e|e.to_string())?;
+                            }
+                            else 
+                            {
+                                log.log(MessageKind::Error, &format!("Received voice packet from unknown peer {}", from))?;
+                            }
                         }
                     },
                     _ => {},

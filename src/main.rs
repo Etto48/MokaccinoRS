@@ -46,6 +46,7 @@ fn main() {
         context.movable.log.clone(),
         context.movable.voice_requests_rx,
         context.movable.voice_interlocutor.clone(),
+        context.movable.ui_notifications_tx.clone(),
         context.movable.voice_queue_rx, 
         context.movable.sender_queue_tx, 
         context.unmovable.config.clone()
@@ -67,6 +68,7 @@ fn main() {
         context.movable.text_requests_tx,
         context.movable.voice_requests_tx,
         context.movable.voice_interlocutor,
+        context.movable.ui_notifications_rx,
         
         context.unmovable,
     );

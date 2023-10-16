@@ -38,7 +38,19 @@ pub fn run(
                 }
                 let packet = match secure_packet
                 {
-                    SecurePacket::Plaintext(p) => p,
+                    SecurePacket::Plaintext(p) => 
+                    {
+
+                        match p.content 
+                        {
+                            Content::RequestConnection(_) |
+                            Content::AcknowledgeConnection => {},
+                            _  => {
+                                log.log(MessageKind::Error, &format!("Received unexpected plaintext packet from {}",from))?;
+                            }
+                        };
+                        p
+                    },
                     SecurePacket::Ciphertext(c) => 
                     {
                         let connection_list = connection_list.read().map_err(|e|e.to_string())?;

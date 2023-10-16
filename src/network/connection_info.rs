@@ -1,4 +1,4 @@
-use std::time::{Duration, Instant};
+use std::time::Instant;
 
 use crate::crypto::{CryptoSessionInfo, SymmetricKey};
 
@@ -8,7 +8,6 @@ pub struct ConnectionInfo
     pub last_seen: Instant,
     pub strikes: u16,
     pub packet_loss: u32,
-    pub latency: Duration,
     pub crypto_session_info: CryptoSessionInfo
 }
 
@@ -20,7 +19,6 @@ impl ConnectionInfo
             last_seen: Instant::now(),
             strikes: 0,
             packet_loss: 0,
-            latency: Duration::from_secs(0),
             crypto_session_info: CryptoSessionInfo{ symmetric_key }
         }
     }
