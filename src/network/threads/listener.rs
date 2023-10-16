@@ -86,7 +86,8 @@ pub fn run(
                     {
                         &connection_queue
                     },
-                    Content::Voice(_) => 
+                    Content::Voice(_) |
+                    Content::EndVoice => 
                     {
                         &voice_queue
                     },

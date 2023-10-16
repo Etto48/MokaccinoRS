@@ -73,6 +73,7 @@ pub struct UI
 
     show_new_connection_dialog: bool,
     show_settings_dialog: bool,
+    show_incoming_call_dialog: Option<String>,
 
     input_devices: Vec<String>,
     output_devices: Vec<String>,
@@ -143,6 +144,7 @@ impl UI
             unmovable_context,
             show_new_connection_dialog: false,
             show_settings_dialog: false,
+            show_incoming_call_dialog: None,
             input_devices: input_devices_names,
             output_devices: output_devices_names,
             settings_image_dark,
@@ -209,7 +211,7 @@ impl UI
             ui.vertical(|ui|{
                 let mut contacts = 
                 {
-                    let connection_list = self.connection_list.read().expect("I sure hope there is no poisoning here");
+                    let connection_list = self.connection_list.read().unwrap();
                     if let Some(name) = &self.active_contact
                     {
                         if connection_list.get_address(name).is_none()
@@ -242,7 +244,7 @@ impl UI
                 {
                     let has_new_messages = 
                     {
-                        let text_list = self.text_list.read().expect("Pls don't crush");
+                        let text_list = self.text_list.read().unwrap();
                         text_list.has_new_messages(&c)
                     };
                     let button_text = 
@@ -282,7 +284,7 @@ impl UI
                             button).clicked()
                         {
                             // disconnect user
-                            self.connection_requests.send(ConnectionRequest::Disconnect(c.clone())).expect("Please don't crush now");
+                            self.connection_requests.send(ConnectionRequest::Disconnect(c.clone())).unwrap();
                             if self.active_contact == Some(c.clone())
                             {
                                 self.active_contact = None;
@@ -323,7 +325,7 @@ impl UI
             //chat
             if let Some(c) = &self.active_contact
             {
-                let mut text_list = self.text_list.write().expect("I sure hope there is no poisoning here");
+                let mut text_list = self.text_list.write().unwrap();
                 if let Some(messages) = text_list.get(c)
                 {
                     for m in messages
@@ -388,12 +390,12 @@ impl UI
                     {
                         // sent a message
                         let is_connected = {
-                            let connection_list = self.connection_list.read().expect("I sure hope there is no poisoning here");
+                            let connection_list = self.connection_list.read().unwrap();
                             connection_list.get_address(c).is_some()
                         };
                         if is_connected
                         {
-                            self.text_requests.send(TextRequest { text: self.input_buffer.clone(), dst: c.clone() }).expect("Please don't crush now");
+                            self.text_requests.send(TextRequest { text: self.input_buffer.clone(), dst: c.clone() }).unwrap();
                         }
                     }
                     else
@@ -452,7 +454,7 @@ impl UI
                 }
                 if let Some(contact) = &self.active_contact
                 {
-                    let connection_list = self.connection_list.read().expect("I sure hope there is no poisoning here");
+                    let connection_list = self.connection_list.read().unwrap();
                     if let Some(address) = connection_list.get_address(contact)
                     {
                         let button_color = {
@@ -479,10 +481,10 @@ impl UI
                         {
                             if button_color.is_none()
                             { // not yet in voice chat
-                                self.voice_requests.send(VoiceRequest::StartTransmission(*address)).expect("Please don't crush now");
+                                self.voice_requests.send(VoiceRequest::StartTransmission(*address)).unwrap();
                             }
                             else {
-                                self.voice_requests.send(VoiceRequest::StopTransmission).expect("Please don't crush now");
+                                self.voice_requests.send(VoiceRequest::StopTransmission(*address)).unwrap();
                             }
                         }
                     }
@@ -493,21 +495,12 @@ impl UI
 
     fn show_settings(
         &mut self, 
-        ctx: &egui::Context, 
-        margin: f32, 
-        background_color: egui::Color32, 
-        accent_color: egui::Color32)
+        window_frame: Frame,
+        ctx: &egui::Context)
     {
         let mut save_config = false;
         egui::Window::new("Settings")
-        .frame(Frame{
-            inner_margin: Margin::same(margin),
-            outer_margin: Margin::same(0.0),
-            rounding: Rounding::same(5.0),
-            fill: background_color,
-            stroke: Stroke::new(1.0, accent_color),
-            ..Default::default()
-        })
+        .frame(window_frame)
         .collapsible(false)
         .resizable(false)
         .anchor(Align2::CENTER_CENTER, Vec2::new(0.0,0.0))
@@ -614,9 +607,8 @@ impl UI
 
     fn show_new_connection(
         &mut self, 
+        window_frame: Frame,
         ctx: &egui::Context, 
-        margin: f32, 
-        background_color: egui::Color32, 
         accent_color: egui::Color32)
     {
         let text_color_addr = 
@@ -624,14 +616,7 @@ impl UI
         let text_color_port = 
             if self.validate_new_connection_port() {None} else {Some(egui::Color32::RED)};
         egui::Window::new("Connect")
-        .frame(Frame{
-            inner_margin: Margin::same(margin),
-            outer_margin: Margin::same(0.0),
-            rounding: Rounding::same(5.0),
-            fill: background_color,
-            stroke: Stroke::new(1.0, accent_color),
-            ..Default::default()
-        })
+        .frame(window_frame)
         .collapsible(false)
         .resizable(false)
         .anchor(Align2::CENTER_CENTER, Vec2::new(0.0,0.0))
@@ -659,7 +644,7 @@ impl UI
                         match address_string.parse::<SocketAddr>() {
                             Ok(address) => 
                             {
-                                self.connection_requests.send(ConnectionRequest::Connect(address)).expect("Please don't crush now");
+                                self.connection_requests.send(ConnectionRequest::Connect(address)).unwrap();
                                 close_window = true;
                             },
                             Err(_) => {
@@ -685,11 +670,60 @@ impl UI
         });
     }
 
+    fn show_incoming_call(
+        &mut self, 
+        from: String,
+        window_frame: Frame,
+        ctx: &egui::Context, 
+        accent_color: egui::Color32)
+    {
+        
+        egui::Window::new(format!("{} is calling!",from))
+        .frame(window_frame)
+        .collapsible(false)
+        .resizable(false)
+        .anchor(Align2::CENTER_CENTER, Vec2::new(0.0,0.0))
+        .show(ctx, |ui|{
+            ui.horizontal(|ui|{
+                if ui.add(Button::new("Accept")
+                .fill(accent_color))
+                .clicked()
+                {
+                    let connection_list = self.connection_list.read().unwrap();
+                    if let Some(address) = connection_list.get_address(&from)
+                    {
+                        self.voice_requests.send(VoiceRequest::StartTransmission(address.to_owned())).unwrap()
+                    }
+                    self.show_incoming_call_dialog = None;
+                }
+                if ui.button("Decline").clicked()
+                {
+                    let connection_list = self.connection_list.read().unwrap();
+                    if let Some(address) = connection_list.get_address(&from)
+                    {
+                        self.voice_requests.send(VoiceRequest::StopTransmission(address.to_owned())).unwrap()
+                    }
+                    self.show_incoming_call_dialog = None;
+                }
+            });
+        });
+    }
+
     fn handle_notifications(&mut self)
     {
-        while let Ok(_notification) = self.ui_notifications.try_recv()
+        while let Ok(notification) = self.ui_notifications.try_recv()
         {
-
+            match notification 
+            {
+                UiNotification::IncomingConnection(_) => todo!(),
+                UiNotification::IncomingCall(from) => 
+                {
+                    if self.voice_interlocutor.lock().unwrap().is_none()
+                    {
+                        self.show_incoming_call_dialog = Some(from);
+                    }
+                },
+            }
         }
     }
 }
@@ -745,6 +779,15 @@ impl eframe::App for UI
             ..(*ctx.style()).clone()
         });
 
+        let window_frame = Frame{
+            inner_margin: Margin::same(margin),
+            outer_margin: Margin::same(0.0),
+            rounding: Rounding::same(5.0),
+            fill: background_color,
+            stroke: Stroke::new(1.0, accent_color),
+            ..Default::default()
+        };
+
         CentralPanel::default()
         .frame(Frame{
             inner_margin: Margin::same(margin),
@@ -778,12 +821,17 @@ impl eframe::App for UI
 
         if self.show_new_connection_dialog
         {
-            self.show_new_connection(ctx, margin, background_color, accent_color);
+            self.show_new_connection(window_frame, ctx, accent_color);
         }
 
         if self.show_settings_dialog
         {
-            self.show_settings(ctx, margin, background_color, accent_color);
+            self.show_settings(window_frame, ctx);
+        }
+
+        if let Some(from) = &self.show_incoming_call_dialog
+        {
+            self.show_incoming_call(from.clone(), window_frame, ctx, accent_color);
         }
 
         ctx.request_repaint_after(Duration::from_millis(defines::UPDATE_UI_INTERVAL_MS));

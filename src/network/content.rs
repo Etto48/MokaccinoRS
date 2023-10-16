@@ -14,6 +14,7 @@ pub enum Content
     RequestConnection(SignedContactInfo),
     AcknowledgeConnection,
     Voice(Vec<u8>),
+    EndVoice,
 }
 impl Content {
     pub fn request_connection_from_config(config: &Config, ecdhe_public_key: PublicKey) -> Self {

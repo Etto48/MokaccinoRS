@@ -1,4 +1,4 @@
-use std::{sync::{mpsc::{Receiver, Sender, RecvTimeoutError}, Arc, RwLock, Mutex, MutexGuard}, net::SocketAddr, collections::VecDeque};
+use std::{sync::{mpsc::{Receiver, Sender, RecvTimeoutError}, Arc, RwLock, Mutex, MutexGuard}, net::SocketAddr, collections::VecDeque, time::Instant};
 
 use cpal::{traits::{HostTrait, DeviceTrait, StreamTrait}, Device, Host};
 use rubato::Resampler;
@@ -19,6 +19,7 @@ pub fn run(
     let host = cpal::default_host();
     let mut context = get_voice_context(&host, &config, &log)?;
 
+    let mut recently_ended: Option<(SocketAddr, Instant)> = None;
     context.input_stream.pause().map_err(|e|e.to_string())?;
     context.output_stream.pause().map_err(|e|e.to_string())?;
 
@@ -55,15 +56,50 @@ pub fn run(
                                     log.log(MessageKind::Error, &format!("Failed to decode voice packet from {}", from))?;
                                 }
                             }
+                            else 
+                            {
+                                // someone is calling while a call is already in progress
+                                sender_queue.send((Content::EndVoice, from)).map_err(|e|e.to_string())?;
+                            }
                         }
                         else {
                             if let Some(from_name) = connection_list.read().map_err(|e|e.to_string())?.get_name(&from)
                             {
-                                ui_notifications.send(UiNotification::IncomingCall(from_name.to_string())).map_err(|e|e.to_string())?;
+                                let mut ignore = false;
+                                if let Some((addr, _time)) = recently_ended
+                                {
+                                    if addr == from
+                                    {
+                                        ignore = true;
+                                        sender_queue.send((Content::EndVoice, from)).map_err(|e|e.to_string())?;
+                                    }
+                                }
+                                if !ignore
+                                {
+                                    ui_notifications.send(UiNotification::IncomingCall(from_name.to_string())).map_err(|e|e.to_string())?;
+                                }
                             }
                             else 
                             {
                                 log.log(MessageKind::Error, &format!("Received voice packet from unknown peer {}", from))?;
+                                sender_queue.send((Content::EndVoice, from)).map_err(|e|e.to_string())?;
+                            }
+                        }
+                    },
+                    Content::EndVoice =>
+                    {
+                        let voice_interlocutor = voice_interlocutor.lock().map_err(|e|e.to_string())?;
+                        if let Some(interlocutor_address) = *voice_interlocutor
+                        {
+                            if interlocutor_address == from
+                            {
+                                stop_transmission_no_lock(
+                                    voice_interlocutor, 
+                                    &context.input_channel, 
+                                    &context.output_channel, 
+                                    &context.input_stream, 
+                                    &context.output_stream,
+                                    &log)?;
                             }
                         }
                     },
@@ -88,6 +124,13 @@ pub fn run(
                                     &context.input_stream, 
                                     &context.output_stream,
                                     &log)?;
+                            }
+                        }
+                        if let Some((_addr, time)) = recently_ended
+                        {
+                            if time.elapsed() > defines::VOICE_ENDED_TIMEOUT
+                            {
+                                recently_ended = None;
                             }
                         }
                     },
@@ -143,15 +186,24 @@ pub fn run(
                             &context.output_channel,
                             &log)?;
                     },
-                    VoiceRequest::StopTransmission =>
+                    VoiceRequest::StopTransmission(target_address) =>
                     {
-                        stop_transmission(
-                            &voice_interlocutor, 
-                            &context.input_channel, 
-                            &context.output_channel, 
-                            &context.input_stream, 
-                            &context.output_stream,
-                            &log)?;
+                        let voice_interlocutor = voice_interlocutor.lock().map_err(|e|e.to_string())?;
+                        if let Some(interlocutor_address) = *voice_interlocutor
+                        {
+                            if interlocutor_address == target_address
+                            {
+                                stop_transmission_no_lock(
+                                    voice_interlocutor, 
+                                    &context.input_channel, 
+                                    &context.output_channel, 
+                                    &context.input_stream, 
+                                    &context.output_stream,
+                                    &log)?;
+                            }
+                        }
+                        sender_queue.send((Content::EndVoice, target_address)).map_err(|e|e.to_string())?;
+                        recently_ended = Some((target_address, Instant::now()));
                     },
                     VoiceRequest::ReloadConfiguration => 
                     {
