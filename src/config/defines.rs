@@ -1,5 +1,8 @@
+use std::net::IpAddr;
+
 use eframe::epaint::Color32;
 
+pub const HOST: IpAddr = IpAddr::V4(std::net::Ipv4Addr::new(0, 0, 0, 0));
 pub const THREAD_QUEUE_TIMEOUT: std::time::Duration = std::time::Duration::from_millis(100);
 pub const THREAD_SUPERVISOR_SLEEP_TIME: std::time::Duration = std::time::Duration::from_millis(200);
 pub const MAX_THREAD_JOIN_TRIES: u32 = 10;

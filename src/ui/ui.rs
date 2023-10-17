@@ -1,4 +1,4 @@
-use std::{sync::{Arc, RwLock, mpsc::{Sender, Receiver}, Mutex}, time::Duration, net::{SocketAddr, IpAddr}};
+use std::{sync::{Arc, RwLock, mpsc::{Sender, Receiver}, Mutex}, time::Duration, net::{SocketAddr, ToSocketAddrs}};
 
 use chrono::{Local, DateTime};
 use cpal::traits::{HostTrait, DeviceTrait};
@@ -53,8 +53,7 @@ pub fn run(
 pub struct UI
 {
     input_buffer: String,
-    new_connection_address_buffer: String,
-    new_connection_port_buffer: String,
+    new_connection_url_buffer: String,
     settings_port_buffer: String,
 
     active_contact: Option<String>,
@@ -129,8 +128,7 @@ impl UI
             TextureOptions::default());
         Self { 
             input_buffer: String::new(), 
-            new_connection_address_buffer: String::new(),
-            new_connection_port_buffer: String::new(),
+            new_connection_url_buffer: String::new(),
             settings_port_buffer,
             active_contact: None, 
             connection_list, 
@@ -156,14 +154,16 @@ impl UI
         }
     }
 
-    fn validate_new_connection_address(&self) -> bool
+    fn validate_new_connection_url(&self) -> bool
     {
-        self.new_connection_address_buffer.parse::<IpAddr>().is_ok()
-    }
-
-    fn validate_new_connection_port(&self) -> bool
-    {
-        self.new_connection_port_buffer.parse::<u16>().is_ok()
+        if let Ok(iter) = self.new_connection_url_buffer.to_socket_addrs()
+        {
+            iter.len() > 0
+        }
+        else
+        {
+            false
+        }
     }
 
     fn save_config(&self)
@@ -247,15 +247,25 @@ impl UI
                         let text_list = self.text_list.read().unwrap();
                         text_list.has_new_messages(&c)
                     };
+                    let max_chars = ((ui.available_width() - 40.0)/ 5.0) as usize;
+                    let shortened_name = 
+                    if c.len() > max_chars
+                    {
+                        c.chars().take(max_chars - 3).collect::<String>() + "..."
+                    }
+                    else
+                    {
+                        c.clone()
+                    };
                     let button_text = 
                     {
                         if has_new_messages
                         {
-                            format!("{}*",c)
+                            format!("{}*",shortened_name)
                         }
                         else 
                         {
-                            c.clone()    
+                            shortened_name.clone()    
                         }
                     };
                     ui.horizontal(|ui|{
@@ -612,9 +622,7 @@ impl UI
         accent_color: egui::Color32)
     {
         let text_color_addr = 
-            if self.validate_new_connection_address() {None} else {Some(egui::Color32::RED)};
-        let text_color_port = 
-            if self.validate_new_connection_port() {None} else {Some(egui::Color32::RED)};
+            if self.validate_new_connection_url() {None} else {Some(egui::Color32::RED)};
         egui::Window::new("Connect")
         .frame(window_frame)
         .collapsible(false)
@@ -622,12 +630,9 @@ impl UI
         .anchor(Align2::CENTER_CENTER, Vec2::new(0.0,0.0))
         .show(ctx,|ui|{
             ui.horizontal(|ui|{
-                ui.add_sized(Vec2::new(250.0,20.0),TextEdit::singleline(&mut self.new_connection_address_buffer)
-                .hint_text("Address")
+                ui.add_sized(Vec2::new(ui.available_width(),20.0),TextEdit::singleline(&mut self.new_connection_url_buffer)
+                .hint_text("url")
                 .text_color_opt(text_color_addr));
-                ui.add_sized(Vec2::new(ui.available_width(),20.0),TextEdit::singleline(&mut self.new_connection_port_buffer)
-                .hint_text("Port")
-                .text_color_opt(text_color_port));
             });
             ui.horizontal(|ui|{
                 let mut close_window = false;
@@ -638,20 +643,18 @@ impl UI
                     .clicked() ||
                     ui.input(|i| i.key_pressed(Key::Enter))
                 {
-                    let address_string = format!("{}:{}",self.new_connection_address_buffer,self.new_connection_port_buffer);
-                    if self.validate_new_connection_address() && self.validate_new_connection_port()
+                    if let Ok(addesses) = self.new_connection_url_buffer.to_socket_addrs()
                     {
-                        match address_string.parse::<SocketAddr>() {
-                            Ok(address) => 
+                        for address in addesses
+                        {    
+                            if defines::HOST.is_ipv4() == address.is_ipv4() && defines::HOST.is_ipv6() == address.is_ipv6()
                             {
                                 self.connection_requests.send(ConnectionRequest::Connect(address)).unwrap();
                                 close_window = true;
-                            },
-                            Err(_) => {
-                                //this should not be rachable but just in case, ingnore the input
-                            },
+                                break;   
+                            }
                         }
-                    }   
+                    }
                 }
                 if ui.add_sized(
                     Vec2::new(ui.available_width(),20.0),
@@ -662,8 +665,7 @@ impl UI
                 }
                 if close_window
                 {
-                    self.new_connection_address_buffer.clear();
-                    self.new_connection_port_buffer.clear();
+                    self.new_connection_url_buffer.clear();
                     self.show_new_connection_dialog = false;
                 }
             });

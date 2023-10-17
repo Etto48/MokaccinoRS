@@ -5,7 +5,13 @@ pub struct VoiceConfig
 {
     pub input_device: Option<String>,
     pub output_device: Option<String>,
+    #[serde(default = "VoiceConfig::default_gain")]
     pub gain: i32,
+}
+
+impl VoiceConfig
+{
+    fn default_gain() -> i32 { 0 }
 }
 
 impl Default for VoiceConfig
@@ -14,7 +20,7 @@ impl Default for VoiceConfig
         Self { 
             input_device: None,
             output_device: None,
-            gain: 0,
+            gain: VoiceConfig::default_gain(),
         }
     }
 }
