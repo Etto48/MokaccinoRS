@@ -82,7 +82,9 @@ pub fn run(
                     Content::Ping |
                     Content::Pong |
                     Content::RequestConnection(_) |
-                    Content::AcknowledgeConnection => 
+                    Content::AcknowledgeConnection |
+                    Content::RequestUserInfo(_,_) |
+                    Content::UserInfo(_) => 
                     {
                         &connection_queue
                     },

@@ -1,8 +1,9 @@
 use serde::{Serialize, Deserialize};
+use serializable::Serializable;
 
 use crate::crypto::CryptoLastingInfo;
 
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Serializable, Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct LastingContactInfo
 {
     name: String,

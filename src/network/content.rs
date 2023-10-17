@@ -2,7 +2,7 @@ use serializable::Serializable;
 
 use crate::{config::Config, crypto::{SignedContactInfo, PublicKey}};
 
-use super::ContactInfo;
+use super::{ContactInfo, UserInfo};
 
 #[derive(Serializable, Clone, Debug, PartialEq)]
 pub enum Content
@@ -13,6 +13,8 @@ pub enum Content
     Pong,
     RequestConnection(SignedContactInfo),
     AcknowledgeConnection,
+    RequestUserInfo(String,u8),
+    UserInfo(UserInfo),
     Voice(Vec<u8>),
     EndVoice,
 }

@@ -4,5 +4,6 @@ use std::net::SocketAddr;
 pub enum ConnectionRequest
 {
     Connect(SocketAddr),
+    Find(String),
     Disconnect(String),
 }

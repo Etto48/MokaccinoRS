@@ -685,7 +685,7 @@ impl UI
         .anchor(Align2::CENTER_CENTER, Vec2::new(0.0,0.0))
         .show(ctx, |ui|{
             ui.horizontal(|ui|{
-                if ui.add(Button::new("Accept")
+                if ui.add_sized(Vec2::new(ui.available_width()/2.0,20.0),Button::new("Accept")
                 .fill(accent_color))
                 .clicked()
                 {
@@ -696,7 +696,7 @@ impl UI
                     }
                     self.show_incoming_call_dialog = None;
                 }
-                if ui.button("Decline").clicked()
+                if ui.add_sized(Vec2::new(ui.available_width(),20.0),Button::new("Decline")).clicked()
                 {
                     let connection_list = self.connection_list.read().unwrap();
                     if let Some(address) = connection_list.get_address(&from)

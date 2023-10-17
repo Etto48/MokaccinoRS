@@ -1,6 +1,6 @@
 use std::{sync::{mpsc::{Sender, Receiver}, Arc, RwLock}, net::SocketAddr, collections::HashMap, time::{Duration, Instant}};
 
-use crate::{config::{Config, defines}, network::{ConnectionList, Packet, Content, ContactInfo, ConnectionRequest, LastingContactInfo}, log::{Logger, MessageKind}, crypto::{CryptoHandshakeInfo, PrivateKey}};
+use crate::{config::{Config, defines}, network::{ConnectionList, Packet, Content, ContactInfo, ConnectionRequest, LastingContactInfo, UserInfo}, log::{Logger, MessageKind}, crypto::{CryptoHandshakeInfo, PrivateKey, CryptoLastingInfo}};
 
 pub fn run(
     running: Arc<RwLock<bool>>,
@@ -13,6 +13,7 @@ pub fn run(
 ) -> Result<(),String>
 {
     let mut pending_requests = HashMap::<SocketAddr,(Option<ContactInfo>,CryptoHandshakeInfo,Instant,u16)>::new();
+    let mut pending_user_info_requests = HashMap::<(String,SocketAddr),(Option<SocketAddr>,Instant)>::new();
     while *running.read().map_err(|e|e.to_string())?
     {
         match connection_queue.recv_timeout(defines::THREAD_QUEUE_TIMEOUT)
@@ -60,9 +61,15 @@ pub fn run(
                                 }
                                 else
                                 {
+                                    log.log(MessageKind::Event, &format!("New peer {} added",unsafe_info.name()))?;
                                     (unsafe_info.crypto_info().public_key.clone(),true)
                                 }
                             };
+                            if public_key != unsafe_info.crypto_info().public_key
+                            {
+                                log.log(MessageKind::Error, &format!("Public key mismatch for {}",unsafe_info.name()))?;
+                                continue;
+                            }
                             match &signed_contact_info.into_contact_info(&public_key)
                             {
                                 Ok(contact_info) =>
@@ -196,6 +203,76 @@ pub fn run(
                             }
                         }
                     },
+                    Content::RequestUserInfo(name,ttl) =>
+                    {
+                        let ttl = std::cmp::min(ttl,&defines::MAX_FIND_TTL);
+                        let self_info = 
+                        {
+                            let config = config.read().map_err(|e|e.to_string())?;
+                            if config.network.name == *name
+                            {
+                                Some(UserInfo::self_from_config(&config))
+                            }
+                            else 
+                            {
+                                None
+                            }
+                        };
+                        if let Some(info) = self_info
+                        {
+                            sender_queue.send((Content::UserInfo(info), from)).map_err(|e|e.to_string())?;
+                        }
+                        else
+                        {
+                            let user_info =
+                            {
+                                let config = config.read().map_err(|e|e.to_string())?.clone();
+                                let connection_list = connection_list.read().map_err(|e|e.to_string())?;
+                                UserInfo::new(name, &connection_list, &config)
+                            };
+                            if user_info.address().is_none() && *ttl > 0
+                            { // the user is not connected
+                                find_user(Some(from), name, ttl - 1, &mut pending_user_info_requests, connection_list.clone(), &sender_queue)?;
+                            }
+                            else
+                            {
+                                sender_queue.send((Content::UserInfo(user_info), from)).map_err(|e|e.to_string())?;
+                            }
+                        }
+                    },
+                    Content::UserInfo(info) =>
+                    {
+                        let mut done = false;
+                        if let Some((prev, _time)) = pending_user_info_requests.get(&(info.name().to_string(),from))
+                        {
+                            if let Some(public_key) = info.public_key()
+                            {
+                                {
+                                    let mut config = config.write().map_err(|e|e.to_string())?;
+                                    let known_info = config.network.known_hosts.entry(info.name().to_string());
+                                    known_info.or_insert(LastingContactInfo::new(info.name(), &CryptoLastingInfo::new(public_key)));
+                                }
+                                if let Some(address) = info.address()
+                                {
+                                    if prev.is_none()
+                                    {
+                                        // we are the source of the request
+                                        request_connection(address, &mut pending_requests, &sender_queue, config.clone())?;
+                                    }
+                                }
+                                if let Some(addr) = prev
+                                {
+                                    // we need to forward the response
+                                    sender_queue.send((Content::UserInfo(info.clone()), *addr)).map_err(|e|e.to_string())?;
+                                }
+                            }
+                            done = true;
+                        }
+                        if done 
+                        {
+                            pending_user_info_requests.remove_entry(&(info.name().to_string(),from));
+                        }
+                    }
                     _ => unreachable!("Connection thread received non-connection packet: {:?}",packet)
                 }
             },
@@ -232,6 +309,30 @@ pub fn run(
                         {
                             pending_requests.remove(&address);
                             log.log(MessageKind::Error, &format!("Connection to {} timed out", address))?;
+                        }
+
+                        let mut timed_out_pending_user_info_requests = Vec::new();
+                        {
+                            for (name, address) in &mut pending_user_info_requests.keys()
+                            {
+                                if let Some((from, time)) = pending_user_info_requests.get(&(name.clone(),*address))
+                                {
+                                    if time.elapsed() > Duration::from_millis(config.network.timeout_ms)
+                                    {
+                                        if let Some(addr) = from
+                                        {
+                                            sender_queue.send((Content::UserInfo(UserInfo::new_empty(name)), *addr)).map_err(|e|e.to_string())?;
+                                        }
+                                        timed_out_pending_user_info_requests.push((name.clone(),*address));
+                                    }
+                                }
+                            }
+
+                            for (name, address) in timed_out_pending_user_info_requests
+                            {
+                                pending_user_info_requests.remove(&(name.clone(),address));
+                                log.log(MessageKind::Error, &format!("User info request for {} timed out", name))?;
+                            }
                         }
 
                         // check for timed out connections
@@ -283,16 +384,11 @@ pub fn run(
                 {
                     ConnectionRequest::Connect(to) => 
                     {
-                        let config = config.read().map_err(|e|e.to_string())?.clone();
-                        let private_ecdhe_key = PrivateKey::new();
-                        let public_ecdhe_key = private_ecdhe_key.public_key();
-                        let crypto_handshake_info = CryptoHandshakeInfo
-                        {
-                            local_ecdhe_key: private_ecdhe_key,
-                            remote_ecdhe_key: None,
-                        };
-                        sender_queue.send((Content::request_connection_from_config(&config, public_ecdhe_key), to)).map_err(|e|e.to_string())?;
-                        pending_requests.insert(to, (None,crypto_handshake_info,Instant::now(),0));
+                        request_connection(to, &mut pending_requests, &sender_queue, config.clone())?;
+                    },
+                    ConnectionRequest::Find(name) =>
+                    {
+                        find_user(None, &name, defines::MAX_FIND_TTL, &mut pending_user_info_requests, connection_list.clone(), &sender_queue)?;
                     },
                     ConnectionRequest::Disconnect(from) => 
                     {
@@ -317,5 +413,62 @@ pub fn run(
             },
         }
     }
+    Ok(())
+}
+
+fn find_user(
+    from: Option<SocketAddr>,
+    name: &str, 
+    ttl: u8, 
+    pending_user_info_requests: &mut HashMap::<(String,SocketAddr),(Option<SocketAddr>,Instant)>, 
+    connection_list: Arc<RwLock<ConnectionList>>,
+    sender_queue: &Sender<(Content,SocketAddr)>
+) -> Result<(),String>
+{
+    let connection_list = connection_list.read().map_err(|e|e.to_string())?;
+    if connection_list.get_address(name).is_some()
+    {
+        unreachable!("User is connected");
+    }
+    else
+    {
+        for c in connection_list.get_addresses()
+        {
+            if let Some((prev, _time)) = pending_user_info_requests.get(&(name.to_string(),c))
+            {
+                if prev.is_none()
+                {
+                    // we are already waiting for a response from this peer
+                    return Ok(());
+                }
+            }
+        }
+        for c in connection_list.get_addresses()
+        {
+            pending_user_info_requests.insert((name.to_string(),c), (from,Instant::now()));
+            sender_queue.send((Content::RequestUserInfo(name.to_string(), ttl), c)).map_err(|e|e.to_string())?;
+        }
+        Ok(()) 
+    }
+
+}
+
+fn request_connection(
+    to: SocketAddr,
+    pending_requests: &mut HashMap::<SocketAddr,(Option<ContactInfo>,CryptoHandshakeInfo,Instant,u16)>,
+    sender_queue: &Sender<(Content,SocketAddr)>,
+    config: Arc<RwLock<Config>>
+) -> Result<(),String>
+{
+    let config = config.read().map_err(|e|e.to_string())?.clone();
+    let private_ecdhe_key = PrivateKey::new();
+    let public_ecdhe_key = private_ecdhe_key.public_key();
+    let crypto_handshake_info = CryptoHandshakeInfo
+    {
+        local_ecdhe_key: private_ecdhe_key,
+        remote_ecdhe_key: None,
+    };
+    sender_queue.send((Content::request_connection_from_config(&config, public_ecdhe_key), to)).map_err(|e|e.to_string())?;
+    pending_requests.insert(to, (None,crypto_handshake_info,Instant::now(),0));
     Ok(())
 }

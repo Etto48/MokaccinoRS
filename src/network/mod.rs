@@ -8,6 +8,7 @@ pub mod packet;
 pub mod content;
 pub mod secure_packet;
 pub mod lasting_contact_info;
+pub mod user_info;
 
 pub use contact_info::ContactInfo;
 pub use connection_list::ConnectionList;
@@ -17,3 +18,4 @@ pub use packet::Packet;
 pub use content::Content;
 pub use secure_packet::SecurePacket;
 pub use lasting_contact_info::LastingContactInfo;
+pub use user_info::UserInfo;

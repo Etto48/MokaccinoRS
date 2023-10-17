@@ -294,3 +294,38 @@ impl<const L: usize, T: Serializable> Serializable for [T;L]
         Ok((ret, offset))
     }
 }
+
+impl<T: Serializable> Serializable for Option<T>
+{
+    fn serialize(&self) -> Vec<u8> {
+        let mut ret = Vec::new();
+        match self {
+            Some(item) => {
+                ret.push(1);
+                ret.extend(item.serialize());
+            },
+            None => {
+                ret.push(0);
+            }
+        }
+        ret
+    }
+
+    fn deserialize(data: &[u8]) -> std::io::Result<(Self,usize)> {
+        if data.len() < 1
+        {
+            Err(std::io::Error::new(std::io::ErrorKind::InvalidData, "Invalid data length"))
+        }
+        else
+        {
+            match data[0] {
+                0 => Ok((None, 1)),
+                1 => {
+                    let (item, len) = T::deserialize(&data[1..])?;
+                    Ok((Some(item), len + 1))
+                },
+                _ => Err(std::io::Error::new(std::io::ErrorKind::InvalidData, "Invalid option type"))
+            }
+        }
+    }
+}
