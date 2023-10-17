@@ -4,7 +4,9 @@ use super::{NetworkConfig, VoiceConfig};
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Config
 {
+    #[serde(default)]
     pub network: NetworkConfig,
+    #[serde(default)]
     pub voice: VoiceConfig,
 }
 
