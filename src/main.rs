@@ -48,6 +48,16 @@ fn main() {
         context.movable.voice_interlocutor.clone(),
         context.movable.ui_notifications_tx.clone(),
         context.movable.voice_queue_rx, 
+        context.movable.sender_queue_tx.clone(), 
+        context.unmovable.config.clone()
+    ));
+
+    threads.extend(thread::file::start(
+        context.unmovable.running.clone(),
+        context.movable.connection_list.clone(),
+        context.movable.log.clone(),
+        context.movable.file_requests_rx,
+        context.movable.file_queue_rx, 
         context.movable.sender_queue_tx, 
         context.unmovable.config.clone()
     ));

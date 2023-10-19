@@ -54,6 +54,7 @@ pub struct UI
 {
     input_buffer: String,
     new_connection_url_buffer: String,
+    search_user_buffer: String,
     settings_port_buffer: String,
 
     active_contact: Option<String>,
@@ -83,6 +84,8 @@ pub struct UI
     voice_image_light: TextureHandle,
     send_image_dark: TextureHandle,
     send_image_light: TextureHandle,
+    search_image_dark: TextureHandle,
+    search_image_light: TextureHandle,
 }
 
 impl UI
@@ -126,9 +129,16 @@ impl UI
         let send_image_light = cc.egui_ctx.load_texture("SendLight",
             load_image!("../../assets/send_light.png"),
             TextureOptions::default());
+        let search_image_dark = cc.egui_ctx.load_texture("SearchDark", 
+            load_image!("../../assets/search_dark.png"),
+            TextureOptions::default());
+        let search_image_light = cc.egui_ctx.load_texture("SearchLight",
+            load_image!("../../assets/search_light.png"),
+            TextureOptions::default());
         Self { 
             input_buffer: String::new(), 
             new_connection_url_buffer: String::new(),
+            search_user_buffer: String::new(),
             settings_port_buffer,
             active_contact: None, 
             connection_list, 
@@ -151,6 +161,8 @@ impl UI
             voice_image_light,
             send_image_dark,
             send_image_light,
+            search_image_dark,
+            search_image_light,
         }
     }
 
@@ -619,7 +631,8 @@ impl UI
         &mut self, 
         window_frame: Frame,
         ctx: &egui::Context, 
-        accent_color: egui::Color32)
+        accent_color: egui::Color32,
+        search_image: SizedTexture)
     {
         let text_color_addr = 
             if self.validate_new_connection_url() {None} else {Some(egui::Color32::RED)};
@@ -629,33 +642,48 @@ impl UI
         .resizable(false)
         .anchor(Align2::CENTER_CENTER, Vec2::new(0.0,0.0))
         .show(ctx,|ui|{
+            let mut close_window = false;
             ui.horizontal(|ui|{
-                ui.add_sized(Vec2::new(ui.available_width(),20.0),TextEdit::singleline(&mut self.new_connection_url_buffer)
-                .hint_text("url")
-                .text_color_opt(text_color_addr));
+                ui.with_layout(Layout::right_to_left(Align::Center), |ui|{
+                    if ui.add(ImageButton::new(search_image)).clicked()
+                    {
+                        self.connection_requests.send(ConnectionRequest::Find(self.search_user_buffer.clone())).unwrap();
+                        close_window = true;
+                    }
+                    ui.add_sized(Vec2::new(ui.available_width(),20.0), TextEdit::singleline(&mut self.search_user_buffer)
+                        .hint_text("user"));
+                });
+            });
+            ui.vertical_centered(|ui|{
+                ui.label("or");
             });
             ui.horizontal(|ui|{
-                let mut close_window = false;
-                
-                if ui.add_sized(
-                    Vec2::new(ui.available_width()/2.0,20.0),
-                    Button::new("Connect").fill(accent_color))
-                    .clicked() ||
-                    ui.input(|i| i.key_pressed(Key::Enter))
-                {
-                    if let Ok(addesses) = self.new_connection_url_buffer.to_socket_addrs()
+                ui.with_layout(Layout::right_to_left(Align::Center), |ui|{
+                    if ui.add_sized(
+                        Vec2::new(50.0,20.0),
+                        Button::new("Connect").fill(accent_color))
+                        .clicked()
                     {
-                        for address in addesses
-                        {    
-                            if defines::HOST.is_ipv4() == address.is_ipv4() && defines::HOST.is_ipv6() == address.is_ipv6()
-                            {
-                                self.connection_requests.send(ConnectionRequest::Connect(address)).unwrap();
-                                close_window = true;
-                                break;   
+                        if let Ok(addesses) = self.new_connection_url_buffer.to_socket_addrs()
+                        {
+                            for address in addesses
+                            {    
+                                if defines::HOST.is_ipv4() == address.is_ipv4() && defines::HOST.is_ipv6() == address.is_ipv6()
+                                {
+                                    self.connection_requests.send(ConnectionRequest::Connect(address)).unwrap();
+                                    close_window = true;
+                                    break;   
+                                }
                             }
                         }
                     }
-                }
+                    ui.add_sized(Vec2::new(ui.available_width(),20.0),TextEdit::singleline(&mut self.new_connection_url_buffer)
+                    .hint_text("url")
+                    .text_color_opt(text_color_addr));
+                });
+            });
+            
+            ui.horizontal(|ui|{
                 if ui.add_sized(
                     Vec2::new(ui.available_width(),20.0),
                     Button::new("Cancel")).clicked() ||
@@ -663,12 +691,12 @@ impl UI
                 {
                     close_window = true;
                 }
-                if close_window
-                {
-                    self.new_connection_url_buffer.clear();
-                    self.show_new_connection_dialog = false;
-                }
             });
+            if close_window
+            {
+                self.new_connection_url_buffer.clear();
+                self.show_new_connection_dialog = false;
+            }
         });
     }
 
@@ -744,6 +772,7 @@ impl eframe::App for UI
             settings_image,
             voice_image,
             send_image,
+            search_image,
         ) = 
             if ctx.style().visuals.dark_mode
             {(
@@ -753,6 +782,7 @@ impl eframe::App for UI
                 &self.settings_image_dark,
                 &self.voice_image_dark,
                 &self.send_image_dark,
+                &self.search_image_dark,
             )} 
             else {(
                 defines::FRAME_COLOR_LIGHT,
@@ -761,11 +791,13 @@ impl eframe::App for UI
                 &self.settings_image_light,
                 &self.voice_image_light,
                 &self.send_image_light,
+                &self.search_image_light,
             )};
 
         let settings_image = SizedTexture::new(settings_image, Vec2::new(image_size,image_size));
         let voice_image = SizedTexture::new(voice_image, Vec2::new(image_size,image_size));
         let send_image = SizedTexture::new(send_image, Vec2::new(image_size,image_size));
+        let search_image = SizedTexture::new(search_image, Vec2::new(image_size,image_size));
         ctx.set_style(Style
         {
             override_font_id: Some(egui::FontId::monospace(12.0)),
@@ -823,7 +855,7 @@ impl eframe::App for UI
 
         if self.show_new_connection_dialog
         {
-            self.show_new_connection(window_frame, ctx, accent_color);
+            self.show_new_connection(window_frame, ctx, accent_color, search_image);
         }
 
         if self.show_settings_dialog

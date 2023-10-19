@@ -1,6 +1,6 @@
 use std::{sync::{Arc, RwLock, mpsc::{Receiver, Sender}, Mutex}, net::SocketAddr};
 
-use crate::{network::{ConnectionList, Packet, Content, ConnectionRequest}, config::Config, text::{TextList, TextRequest}, log::{Logger, MessageKind}, voice::VoiceRequest, ui::UiNotification};
+use crate::{network::{ConnectionList, Packet, Content, ConnectionRequest}, config::Config, text::{TextList, TextRequest}, log::{Logger, MessageKind}, voice::VoiceRequest, ui::UiNotification, file::FileRequest};
 
 pub struct Context
 {
@@ -20,6 +20,9 @@ pub struct MovableContext
     pub text_requests_rx: Receiver<TextRequest>,
     pub text_requests_tx: Sender<TextRequest>,
 
+    pub file_requests_rx: Receiver<FileRequest>,
+    pub file_requests_tx: Sender<FileRequest>,
+
     pub voice_requests_rx: Receiver<VoiceRequest>,
     pub voice_requests_tx: Sender<VoiceRequest>,
     /// changing this in a thread diffrerent from the voice thread will cause a lot of errors
@@ -29,10 +32,12 @@ pub struct MovableContext
 
     pub connection_queue_rx: Receiver<(Packet,SocketAddr)>,
     pub text_queue_rx: Receiver<(Packet,SocketAddr)>,
+    pub file_queue_rx: Receiver<(Packet,SocketAddr)>,
     pub voice_queue_rx: Receiver<(Packet,SocketAddr)>,
     pub sender_queue_rx: Receiver<(Content,SocketAddr)>,
     pub connection_queue_tx: Sender<(Packet,SocketAddr)>,
     pub text_queue_tx: Sender<(Packet,SocketAddr)>,
+    pub file_queue_tx: Sender<(Packet,SocketAddr)>,
     pub voice_queue_tx: Sender<(Packet,SocketAddr)>,
     pub sender_queue_tx: Sender<(Content,SocketAddr)>,
 }
@@ -75,11 +80,13 @@ impl Context
 
         let (connection_requests_tx, connection_requests_rx) = std::sync::mpsc::channel::<ConnectionRequest>();
         let (text_requests_tx, text_requests_rx) = std::sync::mpsc::channel::<TextRequest>();
+        let (file_requests_tx, file_requests_rx) = std::sync::mpsc::channel::<FileRequest>();
         let (voice_requests_tx, voice_requests_rx) = std::sync::mpsc::channel::<VoiceRequest>();
         let voice_interlocutor = Arc::new(Mutex::new(None));
         let (ui_notifications_tx, ui_notifications_rx) = std::sync::mpsc::channel::<UiNotification>();
 
         let (text_queue_tx, text_queue_rx) = std::sync::mpsc::channel::<(Packet,SocketAddr)>();
+        let (file_queue_tx, file_queue_rx) = std::sync::mpsc::channel::<(Packet,SocketAddr)>();
         let (connection_queue_tx, connection_queue_rx) = std::sync::mpsc::channel::<(Packet,SocketAddr)>();
         let (voice_queue_tx, voice_queue_rx) = std::sync::mpsc::channel::<(Packet,SocketAddr)>();
         let (sender_queue_tx, sender_queue_rx) = std::sync::mpsc::channel::<(Content,std::net::SocketAddr)>();
@@ -96,6 +103,8 @@ impl Context
                 connection_requests_tx,
                 text_requests_rx,
                 text_requests_tx,
+                file_requests_rx,
+                file_requests_tx,
                 voice_requests_rx,
                 voice_requests_tx,
                 voice_interlocutor,
@@ -104,10 +113,12 @@ impl Context
 
                 connection_queue_rx,
                 text_queue_rx,
+                file_queue_rx,
                 voice_queue_rx,
                 sender_queue_rx,
                 connection_queue_tx,
                 text_queue_tx,
+                file_queue_tx,
                 voice_queue_tx,
                 sender_queue_tx,
             },
