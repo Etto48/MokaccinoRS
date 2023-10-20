@@ -120,39 +120,40 @@ impl UI
         input_devices_names.insert(0, "Default".to_string());
         output_devices_names.insert(0, "Default".to_string());
         let settings_port_buffer = unmovable_context.config.read().unwrap().network.port.to_string();
+        let texture_options = TextureOptions::LINEAR;
         let loading_image = cc.egui_ctx.load_texture("Loading", 
             load_image!("../../assets/loading.png"),
-            TextureOptions::default());
+            texture_options);
         let settings_image_dark = cc.egui_ctx.load_texture("SettingsDark", 
             load_image!("../../assets/settings_dark.png"),
-            TextureOptions::default());
+            texture_options);
         let settings_image_light = cc.egui_ctx.load_texture("SettingsLight", 
             load_image!("../../assets/settings_light.png"),
-            TextureOptions::default());
+            texture_options);
         let voice_image_dark = cc.egui_ctx.load_texture("VoiceDark", 
             load_image!("../../assets/voice_dark.png"),
-            TextureOptions::default());
+            texture_options);
         let voice_image_light = cc.egui_ctx.load_texture("VoiceLight", 
             load_image!("../../assets/voice_light.png"),
-            TextureOptions::default());
+            texture_options);
         let send_image_dark = cc.egui_ctx.load_texture("SendDark", 
             load_image!("../../assets/send_dark.png"),
-            TextureOptions::default());
+            texture_options);
         let send_image_light = cc.egui_ctx.load_texture("SendLight",
             load_image!("../../assets/send_light.png"),
-            TextureOptions::default());
+            texture_options);
         let search_image_dark = cc.egui_ctx.load_texture("SearchDark", 
             load_image!("../../assets/search_dark.png"),
-            TextureOptions::default());
+            texture_options);
         let search_image_light = cc.egui_ctx.load_texture("SearchLight",
             load_image!("../../assets/search_light.png"),
-            TextureOptions::default());
+            texture_options);
         let connect_image_dark = cc.egui_ctx.load_texture("ConnectDark", 
             load_image!("../../assets/connect_dark.png"),
-            TextureOptions::default());
+            texture_options);
         let connect_image_light = cc.egui_ctx.load_texture("ConnectLight",
             load_image!("../../assets/connect_light.png"),
-            TextureOptions::default());
+            texture_options);
         Self { 
             is_still_loading,
             first_running_frame: true,
