@@ -18,7 +18,7 @@ You will probably need to install only [perl](https://www.perl.org/) if you alre
 
 - [Rust](https://www.rust-lang.org/) compiler
 - All the depndencies to build [cpal](https://docs.rs/cpal/latest/cpal/)
-  - libasound2-dev
+  - libasound2-dev (on linux)
 - All the dependencies to build [openssl-rust](https://docs.rs/openssl/latest/openssl/)
   - C compiler (gcc, clang, msvc, ...)
   - [perl](https://www.perl.org/)

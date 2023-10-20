@@ -135,7 +135,19 @@ fn main() -> Result<(),Box<dyn Any + Send>>
         },
         Err(e) => 
         {
-            println!("Thread supervisor panicked: {}",e.downcast_ref::<String>().unwrap_or(&"Unknown".to_string()));
+            let error_message = if let Some(&s) = e.downcast_ref::<&str>()
+            {
+                s
+            }
+            else if let Some(s) = e.downcast_ref::<String>()
+            {
+                s.as_str()
+            }
+            else
+            {
+                "Unknown"
+            };
+            println!("Thread supervisor panicked: {}", error_message);
             Err(e)
         },
     }
