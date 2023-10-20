@@ -97,6 +97,7 @@ fn main() -> Result<(),Box<dyn Any + Send>>
         )
     }).unwrap();
 
+    #[cfg(not(target_os = "macos"))]
     ui::loading_screen::run(is_still_loading);
 
     let (
