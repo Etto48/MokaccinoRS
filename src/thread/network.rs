@@ -9,6 +9,7 @@ pub fn start(
     log: Logger,
 
     text_queue: Sender<(Packet,SocketAddr)>,
+    file_queue: Sender<(Packet,SocketAddr)>,
     connection_queue: Sender<(Packet,SocketAddr)>,
     voice_queue: Sender<(Packet,SocketAddr)>,
 
@@ -45,6 +46,7 @@ pub fn start(
             listener_connection_list, 
             listener_log,
             text_queue, 
+            file_queue,
             connection_queue, 
             voice_queue, 
             listener_config)
