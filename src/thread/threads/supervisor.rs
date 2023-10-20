@@ -19,6 +19,7 @@ pub fn run(
                 to_join.push(i);
             }
         }
+        to_join.reverse();
         for i in to_join
         {
             let handle = handles.remove(i);
