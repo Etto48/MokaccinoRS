@@ -12,10 +12,10 @@ pub fn run(
     requests: Receiver<TextRequest>,
     text_queue: Receiver<(Packet,SocketAddr)>, 
     sender_queue: Sender<(Content,SocketAddr)>,
-    config: Arc<RwLock<Config>>) -> Result<(),String>
+    config: Arc<RwLock<Config>>)
 {
     let mut pending_messages = HashMap::<(String,String,u64),Instant>::new();
-    while *running.read().map_err(|e|e.to_string())?
+    while *running.read().unwrap()
     {
         match text_queue.recv_timeout(defines::THREAD_QUEUE_TIMEOUT) {
             Ok((packet,from)) => 
@@ -24,11 +24,11 @@ pub fn run(
                     Content::Text(text,nonce) => 
                     {
                         // check if the user is in the connection list
-                        let connection_list = connection_list.read().map_err(|e|e.to_string())?;
+                        let connection_list = connection_list.read().unwrap();
                         if let Some(name) = connection_list.get_name(&from)
                         {
                             // check if the text was already received
-                            let mut text_list = text_list.write().map_err(|e|e.to_string())?;
+                            let mut text_list = text_list.write().unwrap();
                             let info = TextInfo {
                                 text: text.clone(),
                                 nonce,
@@ -38,15 +38,15 @@ pub fn run(
                             text_list.add(name, info);
                             // send ack
                             let content = Content::AcknowledgeText(text,nonce);
-                            sender_queue.send((content,from)).map_err(|e|e.to_string())?;
+                            sender_queue.send((content,from)).unwrap();
                         }
                     },
                     Content::AcknowledgeText(text,nonce) =>
                     {
-                        let connection_list = connection_list.read().map_err(|e|e.to_string())?;
+                        let connection_list = connection_list.read().unwrap();
                         if let Some(name) = connection_list.get_name(&from)
                         {
-                            text_list.write().map_err(|e|e.to_string())?.add(name, 
+                            text_list.write().unwrap().add(name, 
                                 TextInfo { 
                                     text: text.clone(), 
                                     nonce,
@@ -62,19 +62,19 @@ pub fn run(
                 match e
                 {
                     std::sync::mpsc::RecvTimeoutError::Timeout => {
-                        let config = config.read().map_err(|e|e.to_string())?.clone();
+                        let config = config.read().unwrap().clone();
                         let mut to_remove = Vec::new();
                         for ((name,message,nonce),last_seen) in pending_messages.iter_mut()
                         {
                             if last_seen.elapsed() >= Duration::from_millis(config.network.timeout_ms)
                             {
                                 // check if the user is still connected
-                                let connection_list = connection_list.read().map_err(|e|e.to_string())?;
+                                let connection_list = connection_list.read().unwrap();
                                 if let Some(addr) = connection_list.get_address(name)
                                 {
                                     // resend the message
                                     let content = Content::Text(message.clone(),*nonce);
-                                    sender_queue.send((content,*addr)).map_err(|e|e.to_string())?;
+                                    sender_queue.send((content,*addr)).unwrap();
                                     // update the last seen time
                                     *last_seen = Instant::now();
                                 }
@@ -91,10 +91,10 @@ pub fn run(
                     },
                     std::sync::mpsc::RecvTimeoutError::Disconnected => 
                     {
-                        return if !*running.read().map_err(|e|e.to_string())?
-                        {Ok(())} 
+                        if !*running.read().unwrap()
+                        {return} 
                         else 
-                        {Err("Text channel broken".to_string())}
+                        {panic!("Text channel broken")}
                     }
                 }
             },
@@ -104,12 +104,12 @@ pub fn run(
         {
             Ok(TextRequest{text, dst}) => 
             {
-                let connection_list = connection_list.read().map_err(|e|e.to_string())?;
+                let connection_list = connection_list.read().unwrap();
                 if let Some(addr) = connection_list.get_address(&dst)
                 {
                     let nonce = gen_nonce();
                     let content = Content::Text(text.clone(),nonce);
-                    sender_queue.send((content,*addr)).map_err(|e|e.to_string())?;
+                    sender_queue.send((content,*addr)).unwrap();
                     pending_messages.insert((dst,text,nonce),Instant::now());
                 }
             },
@@ -120,16 +120,15 @@ pub fn run(
                     std::sync::mpsc::TryRecvError::Empty => {},
                     std::sync::mpsc::TryRecvError::Disconnected => 
                     {
-                        return if !*running.read().map_err(|e|e.to_string())?
-                        {Ok(())} 
+                        if !*running.read().unwrap()
+                        {return} 
                         else 
-                        {Err("Text channel broken".to_string())}
+                        {panic!("Text channel broken")}
                     },
                 }
             },
         }
     }
-    Ok(())
 }
 
 fn gen_nonce() -> u64

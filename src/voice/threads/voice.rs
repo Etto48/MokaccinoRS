@@ -14,16 +14,17 @@ pub fn run(
     ui_notifications: Sender<UiNotification>,
     voice_queue: Receiver<(Packet,SocketAddr)>, 
     sender_queue: Sender<(Content,SocketAddr)>,
-    config: Arc<RwLock<Config>>) -> Result<(),String>
+    config: Arc<RwLock<Config>>
+)
 {
     let host = cpal::default_host();
-    let mut context = get_voice_context(&host, &config, &log)?;
+    let mut context = get_voice_context(&host, &config, &log).unwrap();
 
     let mut recently_ended: Option<(SocketAddr, Instant)> = None;
-    context.input_stream.pause().map_err(|e|e.to_string())?;
-    context.output_stream.pause().map_err(|e|e.to_string())?;
+    context.input_stream.pause().unwrap();
+    context.output_stream.pause().unwrap();
 
-    while *running.read().map_err(|e|e.to_string())?
+    while *running.read().unwrap()
     {
         match voice_queue.recv_timeout(defines::THREAD_QUEUE_TIMEOUT) {
             Ok((packet,from)) =>
@@ -32,7 +33,7 @@ pub fn run(
                 {
                     Content::Voice(voice) =>
                     {
-                        if let Some(interlocutor_address) = *voice_interlocutor.lock().map_err(|e|e.to_string())?
+                        if let Some(interlocutor_address) = *voice_interlocutor.lock().unwrap()
                         {
                             if interlocutor_address == from
                             {
@@ -45,25 +46,25 @@ pub fn run(
                                         &mut context.output_resampler_buffer, 
                                         None) 
                                     {
-                                        let mut output_channel = context.output_channel.lock().map_err(|e|e.to_string())?;
+                                        let mut output_channel = context.output_channel.lock().unwrap();
                                         output_channel.extend(context.output_resampler_buffer[0].iter().take(output_frames));
                                     }
                                     else {
-                                        log.log(MessageKind::Error, &format!("Failed to resample voice packet from {}", from))?;
+                                        log.log(MessageKind::Error, &format!("Failed to resample voice packet from {}", from)).unwrap();
                                     }
                                 }
                                 else {
-                                    log.log(MessageKind::Error, &format!("Failed to decode voice packet from {}", from))?;
+                                    log.log(MessageKind::Error, &format!("Failed to decode voice packet from {}", from)).unwrap();
                                 }
                             }
                             else 
                             {
                                 // someone is calling while a call is already in progress
-                                sender_queue.send((Content::EndVoice, from)).map_err(|e|e.to_string())?;
+                                sender_queue.send((Content::EndVoice, from)).unwrap();
                             }
                         }
                         else {
-                            if let Some(from_name) = connection_list.read().map_err(|e|e.to_string())?.get_name(&from)
+                            if let Some(from_name) = connection_list.read().unwrap().get_name(&from)
                             {
                                 let mut ignore = false;
                                 if let Some((addr, _time)) = recently_ended
@@ -71,24 +72,24 @@ pub fn run(
                                     if addr == from
                                     {
                                         ignore = true;
-                                        sender_queue.send((Content::EndVoice, from)).map_err(|e|e.to_string())?;
+                                        sender_queue.send((Content::EndVoice, from)).unwrap();
                                     }
                                 }
                                 if !ignore
                                 {
-                                    ui_notifications.send(UiNotification::IncomingCall(from_name.to_string())).map_err(|e|e.to_string())?;
+                                    ui_notifications.send(UiNotification::IncomingCall(from_name.to_string())).unwrap();
                                 }
                             }
                             else 
                             {
-                                log.log(MessageKind::Error, &format!("Received voice packet from unknown peer {}", from))?;
-                                sender_queue.send((Content::EndVoice, from)).map_err(|e|e.to_string())?;
+                                log.log(MessageKind::Error, &format!("Received voice packet from unknown peer {}", from)).unwrap();
+                                sender_queue.send((Content::EndVoice, from)).unwrap();
                             }
                         }
                     },
                     Content::EndVoice =>
                     {
-                        let voice_interlocutor = voice_interlocutor.lock().map_err(|e|e.to_string())?;
+                        let voice_interlocutor = voice_interlocutor.lock().unwrap();
                         if let Some(interlocutor_address) = *voice_interlocutor
                         {
                             if interlocutor_address == from
@@ -99,7 +100,7 @@ pub fn run(
                                     &context.output_channel, 
                                     &context.input_stream, 
                                     &context.output_stream,
-                                    &log)?;
+                                    &log).unwrap();
                             }
                         }
                     },
@@ -111,10 +112,10 @@ pub fn run(
                 match e
                 {
                     RecvTimeoutError::Timeout => {
-                        let voice_interlocutor = voice_interlocutor.lock().map_err(|e|e.to_string())?;
+                        let voice_interlocutor = voice_interlocutor.lock().unwrap();
                         if let Some(interlocutor_address) = *voice_interlocutor
                         {
-                            let connection_list = connection_list.read().map_err(|e|e.to_string())?;
+                            let connection_list = connection_list.read().unwrap();
                             if connection_list.get_name(&interlocutor_address).is_none()
                             {
                                 stop_transmission_no_lock(
@@ -123,7 +124,7 @@ pub fn run(
                                     &context.output_channel, 
                                     &context.input_stream, 
                                     &context.output_stream,
-                                    &log)?;
+                                    &log).unwrap();
                             }
                         }
                         if let Some((_addr, time)) = recently_ended
@@ -136,22 +137,22 @@ pub fn run(
                     },
                     RecvTimeoutError::Disconnected => 
                     {
-                        return if !*running.read().map_err(|e|e.to_string())?
-                        {Ok(())} 
+                        if !*running.read().unwrap()
+                        {return} 
                         else 
-                        {Err("Voice channel broken".to_string())}
+                        {panic!("Voice channel broken")}
                     }
                 }
             },
         }
         {
-            let config = config.read().map_err(|e|e.to_string())?;
+            let config = config.read().unwrap();
             let voice_gain = config.voice.gain.clamp(defines::MIN_GAIN, defines::MAX_GAIN);
-            context.decoder.set_gain(voice_gain).map_err(|e|e.to_string())?;
+            context.decoder.set_gain(voice_gain).unwrap();
         }
-        if let Some(interlocutor_addres) = *voice_interlocutor.lock().map_err(|e|e.to_string())?
+        if let Some(interlocutor_addres) = *voice_interlocutor.lock().unwrap()
         {
-            let mut input_channel = context.input_channel.lock().map_err(|e|e.to_string())?;
+            let mut input_channel = context.input_channel.lock().unwrap();
             let needed_frames = context.input_resampler.input_frames_next();
             if input_channel.len() >= needed_frames
             {
@@ -162,11 +163,11 @@ pub fn run(
                         &[data], 
                         &mut context.input_resampler_buffer, 
                         None
-                    ).map_err(|e|e.to_string())?;
+                    ).unwrap();
                 
-                let encoded = context.encoder.encode_vec_float(&context.input_resampler_buffer[0][..output_frames], defines::VOICE_MAX_TRANSMISSION_SIZE).map_err(|e|e.to_string())?;
+                let encoded = context.encoder.encode_vec_float(&context.input_resampler_buffer[0][..output_frames], defines::VOICE_MAX_TRANSMISSION_SIZE).unwrap();
                 let content = Content::Voice(encoded);
-                sender_queue.send((content, interlocutor_addres)).map_err(|e|e.to_string())?;
+                sender_queue.send((content, interlocutor_addres)).unwrap();
             }
         }
         match requests.try_recv()
@@ -184,11 +185,11 @@ pub fn run(
                             &context.output_stream,
                             &context.input_channel,
                             &context.output_channel,
-                            &log)?;
+                            &log).unwrap();
                     },
                     VoiceRequest::StopTransmission(target_address) =>
                     {
-                        let voice_interlocutor = voice_interlocutor.lock().map_err(|e|e.to_string())?;
+                        let voice_interlocutor = voice_interlocutor.lock().unwrap();
                         if let Some(interlocutor_address) = *voice_interlocutor
                         {
                             if interlocutor_address == target_address
@@ -199,10 +200,10 @@ pub fn run(
                                     &context.output_channel, 
                                     &context.input_stream, 
                                     &context.output_stream,
-                                    &log)?;
+                                    &log).unwrap();
                             }
                         }
-                        sender_queue.send((Content::EndVoice, target_address)).map_err(|e|e.to_string())?;
+                        sender_queue.send((Content::EndVoice, target_address)).unwrap();
                         recently_ended = Some((target_address, Instant::now()));
                     },
                     VoiceRequest::ReloadConfiguration => 
@@ -213,8 +214,8 @@ pub fn run(
                             &context.output_channel, 
                             &context.input_stream, 
                             &context.output_stream, 
-                            &log)?;
-                        context = get_voice_context(&host, &config, &log)?;
+                            &log).unwrap();
+                        context = get_voice_context(&host, &config, &log).unwrap();
                         if let Some(addr) = old_interlocutor
                         {
                             start_transmission(
@@ -224,7 +225,7 @@ pub fn run(
                                 &context.output_stream,
                                 &context.input_channel,
                                 &context.output_channel,
-                                &log)?;
+                                &log).unwrap();
                         }
                     },
                 }
@@ -236,10 +237,10 @@ pub fn run(
                     std::sync::mpsc::TryRecvError::Empty => {},
                     std::sync::mpsc::TryRecvError::Disconnected => 
                     {
-                        return if !*running.read().map_err(|e|e.to_string())?
-                        {Ok(())} 
+                        if !*running.read().unwrap()
+                        {return} 
                         else 
-                        {Err("Voice channel broken".to_string())}
+                        {panic!("Voice channel broken")}
                     }
                 }
             },
@@ -251,8 +252,7 @@ pub fn run(
         &context.output_channel, 
         &context.input_stream, 
         &context.output_stream, 
-        &log).map_err(|e|e.to_string())?;
-    Ok(())
+        &log).unwrap();
 }
 
 fn stop_transmission_no_lock(
@@ -266,14 +266,14 @@ fn stop_transmission_no_lock(
 {
     if let Some(addr) = *interlocutor
     {
-        log.log(MessageKind::Event, &format!("Voice chat with {} ended", addr))?;
+        log.log(MessageKind::Event, &format!("Voice chat with {} ended", addr)).unwrap();
     }
     let ret = *interlocutor;
     *interlocutor = None;
-    input_stream.pause().map_err(|e|e.to_string())?;
-    output_stream.pause().map_err(|e|e.to_string())?;
-    input_channel.lock().map_err(|e|e.to_string())?.clear();
-    output_channel.lock().map_err(|e|e.to_string())?.clear();
+    input_stream.pause().unwrap();
+    output_stream.pause().unwrap();
+    input_channel.lock().unwrap().clear();
+    output_channel.lock().unwrap().clear();
     Ok(ret)
 }
 
@@ -286,7 +286,7 @@ fn stop_transmission(
     log: &Logger
 ) -> Result<Option<SocketAddr>,String>
 {
-    let interlocutor = interlocutor.lock().map_err(|e|e.to_string())?;
+    let interlocutor = interlocutor.lock().unwrap();
     stop_transmission_no_lock(
         interlocutor,
         input_channel,
@@ -306,13 +306,13 @@ fn start_transmission(
     log: &Logger
 ) -> Result<(),String>
 {
-    let mut interlocutor = interlocutor.lock().map_err(|e|e.to_string())?;
+    let mut interlocutor = interlocutor.lock().unwrap();
     *interlocutor = Some(target_address);
-    input_channel.lock().map_err(|e|e.to_string())?.clear();
-    output_channel.lock().map_err(|e|e.to_string())?.clear();
-    input_stream.play().map_err(|e|e.to_string())?;
-    output_stream.play().map_err(|e|e.to_string())?;
-    log.log(MessageKind::Event, &format!("Voice chat with {} started", target_address))?;
+    input_channel.lock().unwrap().clear();
+    output_channel.lock().unwrap().clear();
+    input_stream.play().unwrap();
+    output_stream.play().unwrap();
+    log.log(MessageKind::Event, &format!("Voice chat with {} started", target_address)).unwrap();
     Ok(())
 }
 
@@ -336,15 +336,15 @@ fn get_default_output_device(host: &Host) -> Result<Device,String>
 
 fn get_io_devices(host: &Host, config: &Arc<RwLock<Config>>, log: &Logger) -> Result<(Device,Device),String>
 {
-    let config = config.read().map_err(|e|e.to_string())?;
+    let config = config.read().unwrap();
     let input_device = 
     if let Some(input_device_name) = config.voice.input_device.clone()
     {
-        let input_devices = host.input_devices().map_err(|e|e.to_string())?;
+        let input_devices = host.input_devices().unwrap();
         let mut input_device = None;
         for device in input_devices
         {
-            if device.name().map_err(|e|e.to_string())? == input_device_name
+            if device.name().unwrap() == input_device_name
             {
                 input_device = Some(device);
             }
@@ -355,25 +355,25 @@ fn get_io_devices(host: &Host, config: &Arc<RwLock<Config>>, log: &Logger) -> Re
         }
         else
         {
-            log.log(MessageKind::Error, &format!("Input device {} not found", input_device_name))?;
-            log.log(MessageKind::Event, "Using default input device")?;
-            let input_devices_string = host.input_devices().map_err(|e|e.to_string())?.map(|device|device.name().map_err(|e|e.to_string())).collect::<Result<Vec<String>,String>>()?.join(", ");
-            log.log(MessageKind::Event, &format!("Available input devices: {}",input_devices_string))?;
-            get_default_input_device(&host)?
+            log.log(MessageKind::Error, &format!("Input device {} not found", input_device_name)).unwrap();
+            log.log(MessageKind::Event, "Using default input device").unwrap();
+            let input_devices_string = host.input_devices().unwrap().map(|device|device.name().map_err(|e|e.to_string())).collect::<Result<Vec<String>,String>>().unwrap().join(", ");
+            log.log(MessageKind::Event, &format!("Available input devices: {}",input_devices_string)).unwrap();
+            get_default_input_device(&host).unwrap()
         }
     }
     else 
     {
-        get_default_input_device(&host)?
+        get_default_input_device(&host).unwrap()
     };
     let output_device = 
     if let Some(output_device_name) = config.voice.output_device.clone()
     {
-        let output_devices = host.output_devices().map_err(|e|e.to_string())?;
+        let output_devices = host.output_devices().unwrap();
         let mut output_device = None;
         for device in output_devices
         {
-            if device.name().map_err(|e|e.to_string())? == output_device_name
+            if device.name().unwrap() == output_device_name
             {
                 output_device = Some(device);
             }
@@ -384,25 +384,25 @@ fn get_io_devices(host: &Host, config: &Arc<RwLock<Config>>, log: &Logger) -> Re
         }
         else
         {
-            log.log(MessageKind::Error, &format!("Output device {} not found", output_device_name))?;
-            log.log(MessageKind::Event, "Using default output device")?;
-            let input_devices_string = host.output_devices().map_err(|e|e.to_string())?.map(|device|device.name().map_err(|e|e.to_string())).collect::<Result<Vec<String>,String>>()?.join(", ");
-            log.log(MessageKind::Event, &format!("Available output devices: {}",input_devices_string))?;
-            get_default_output_device(&host)?
+            log.log(MessageKind::Error, &format!("Output device {} not found", output_device_name)).unwrap();
+            log.log(MessageKind::Event, "Using default output device").unwrap();
+            let input_devices_string = host.output_devices().unwrap().map(|device|device.name().map_err(|e|e.to_string())).collect::<Result<Vec<String>,String>>().unwrap().join(", ");
+            log.log(MessageKind::Event, &format!("Available output devices: {}",input_devices_string)).unwrap();
+            get_default_output_device(&host).unwrap()
         }
     }
     else
     {
-        get_default_output_device(&host)?
+        get_default_output_device(&host).unwrap()
     };
     Ok((input_device, output_device))
 }
 
 fn get_voice_context(host: &Host, config: &Arc<RwLock<Config>>, log: &Logger) -> Result<VoiceContext,String>
 {
-    let (input_device, output_device) = get_io_devices(&host, config, &log)?;
-    let input_configs = input_device.default_input_config().map_err(|e|e.to_string())?;
-    let output_configs = output_device.default_output_config().map_err(|e|e.to_string())?;
+    let (input_device, output_device) = get_io_devices(&host, config, &log).unwrap();
+    let input_configs = input_device.default_input_config().unwrap();
+    let output_configs = output_device.default_output_config().unwrap();
     let input_config = input_configs.config();
     let output_config = output_configs.config();
     let input_channel = Arc::new(Mutex::new(VecDeque::<f32>::new()));
@@ -416,7 +416,7 @@ fn get_voice_context(host: &Host, config: &Arc<RwLock<Config>>, log: &Logger) ->
         defines::VOICE_BUFFER_SIZE,
         1,
         1
-    ).map_err(|e|e.to_string())?;
+    ).unwrap();
 
     let input_resampler_buffer = input_resampler.output_buffer_allocate(true);
 
@@ -426,7 +426,7 @@ fn get_voice_context(host: &Host, config: &Arc<RwLock<Config>>, log: &Logger) ->
         defines::VOICE_BUFFER_SIZE,
         1,
         1
-    ).map_err(|e|e.to_string())?;
+    ).unwrap();
 
     let output_resampler_buffer = output_resampler.output_buffer_allocate(true);
 
@@ -434,14 +434,14 @@ fn get_voice_context(host: &Host, config: &Arc<RwLock<Config>>, log: &Logger) ->
         defines::VOICE_TRANSMISSION_SAMPLE_RATE as u32,
         opus::Channels::Mono,
         opus::Application::Voip
-    ).map_err(|e|e.to_string())?;
+    ).unwrap();
 
-    encoder.set_bitrate(defines::VOICE_TRANSMISSION_BITRATE).map_err(|e|e.to_string())?;
+    encoder.set_bitrate(defines::VOICE_TRANSMISSION_BITRATE).unwrap();
 
     let decoder = opus::Decoder::new(
         defines::VOICE_TRANSMISSION_SAMPLE_RATE as u32,
         opus::Channels::Mono
-    ).map_err(|e|e.to_string())?;
+    ).unwrap();
 
     let input_channels = input_config.channels as usize;
     let output_channels = output_config.channels as usize;
@@ -461,7 +461,7 @@ fn get_voice_context(host: &Host, config: &Arc<RwLock<Config>>, log: &Logger) ->
         }
     }, move |_err| {
         todo!("Handle input error");
-    },None).map_err(|e|e.to_string())?;
+    },None).unwrap();
 
     let output_stream = output_device.build_output_stream(&output_config, move |data: &mut [f32], _| {
         let mut output_channel = moved_output_channel.lock().unwrap();
@@ -479,7 +479,7 @@ fn get_voice_context(host: &Host, config: &Arc<RwLock<Config>>, log: &Logger) ->
         }
     }, move |_err| {
         todo!("Handle output error");
-    },None).map_err(|e|e.to_string())?;
+    },None).unwrap();
 
 
     Ok(VoiceContext

@@ -15,7 +15,7 @@ pub fn start(
     sender_queue: Receiver<(Content,SocketAddr)>,
 
     config: Arc<RwLock<Config>>
-) -> Vec<JoinHandle<Result<(),String>>>
+) -> Vec<JoinHandle<()>>
 {
     let listener_builder = std::thread::Builder::new().name("Listener".to_string());
     let sender_builder = std::thread::Builder::new().name("Sender".to_string());

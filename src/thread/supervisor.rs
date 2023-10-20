@@ -6,10 +6,10 @@ use super::threads::supervisor;
 
 pub fn start(
     running: Arc<RwLock<bool>>,
-    handles: Vec<JoinHandle<Result<(),String>>>,
+    handles: Vec<JoinHandle<()>>,
     log: Logger,
     config: Arc<RwLock<Config>>
-) -> JoinHandle<Result<(),String>>
+) -> JoinHandle<()>
 {
     let builder = std::thread::Builder::new().name("Supervisor".to_string());
     match builder.spawn(move || {
@@ -42,17 +42,15 @@ mod tests {
                 while *running1.read().unwrap() {
                     std::thread::sleep(defines::THREAD_QUEUE_TIMEOUT);
                 }
-                Ok(())
             }),
             std::thread::spawn(|| {
                 std::thread::sleep(defines::THREAD_QUEUE_TIMEOUT);
-                Err("Error".to_string())
+                panic!("Error")
             }),
             std::thread::spawn(move || {
                 while *running2.read().unwrap() {
                     std::thread::sleep(defines::THREAD_QUEUE_TIMEOUT);
                 }
-                Ok(())
             }),
         ];
         

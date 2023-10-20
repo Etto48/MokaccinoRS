@@ -10,7 +10,7 @@ pub fn start(
     file_queue: Receiver<(Packet,SocketAddr)>,
     sender_queue: Sender<(Content,SocketAddr)>,
     config: Arc<RwLock<Config>>
-) -> Vec<JoinHandle<Result<(),String>>>
+) -> Vec<JoinHandle<()>>
 {
     let builder = std::thread::Builder::new().name("File".to_string());
     match builder.spawn(move || {

@@ -86,6 +86,8 @@ pub struct UI
     send_image_light: TextureHandle,
     search_image_dark: TextureHandle,
     search_image_light: TextureHandle,
+    connect_image_dark: TextureHandle,
+    connect_image_light: TextureHandle,
 }
 
 impl UI
@@ -135,6 +137,12 @@ impl UI
         let search_image_light = cc.egui_ctx.load_texture("SearchLight",
             load_image!("../../assets/search_light.png"),
             TextureOptions::default());
+        let connect_image_dark = cc.egui_ctx.load_texture("ConnectDark", 
+            load_image!("../../assets/connect_dark.png"),
+            TextureOptions::default());
+        let connect_image_light = cc.egui_ctx.load_texture("ConnectLight",
+            load_image!("../../assets/connect_light.png"),
+            TextureOptions::default());
         Self { 
             input_buffer: String::new(), 
             new_connection_url_buffer: String::new(),
@@ -163,6 +171,8 @@ impl UI
             send_image_light,
             search_image_dark,
             search_image_light,
+            connect_image_dark,
+            connect_image_light,
         }
     }
 
@@ -630,9 +640,10 @@ impl UI
     fn show_new_connection(
         &mut self, 
         window_frame: Frame,
-        ctx: &egui::Context, 
-        accent_color: egui::Color32,
-        search_image: SizedTexture)
+        ctx: &egui::Context,
+        search_image: SizedTexture,
+        connect_image: SizedTexture
+    )
     {
         let text_color_addr = 
             if self.validate_new_connection_url() {None} else {Some(egui::Color32::RED)};
@@ -659,10 +670,7 @@ impl UI
             });
             ui.horizontal(|ui|{
                 ui.with_layout(Layout::right_to_left(Align::Center), |ui|{
-                    if ui.add_sized(
-                        Vec2::new(50.0,20.0),
-                        Button::new("Connect").fill(accent_color))
-                        .clicked()
+                    if ui.add(ImageButton::new(connect_image)).clicked()
                     {
                         if let Ok(addesses) = self.new_connection_url_buffer.to_socket_addrs()
                         {
@@ -773,6 +781,7 @@ impl eframe::App for UI
             voice_image,
             send_image,
             search_image,
+            connect_image,
         ) = 
             if ctx.style().visuals.dark_mode
             {(
@@ -783,6 +792,7 @@ impl eframe::App for UI
                 &self.voice_image_dark,
                 &self.send_image_dark,
                 &self.search_image_dark,
+                &self.connect_image_dark,
             )} 
             else {(
                 defines::FRAME_COLOR_LIGHT,
@@ -792,12 +802,14 @@ impl eframe::App for UI
                 &self.voice_image_light,
                 &self.send_image_light,
                 &self.search_image_light,
+                &self.connect_image_light,
             )};
 
         let settings_image = SizedTexture::new(settings_image, Vec2::new(image_size,image_size));
         let voice_image = SizedTexture::new(voice_image, Vec2::new(image_size,image_size));
         let send_image = SizedTexture::new(send_image, Vec2::new(image_size,image_size));
         let search_image = SizedTexture::new(search_image, Vec2::new(image_size,image_size));
+        let connect_image = SizedTexture::new(connect_image, Vec2::new(image_size,image_size));
         ctx.set_style(Style
         {
             override_font_id: Some(egui::FontId::monospace(12.0)),
@@ -855,7 +867,7 @@ impl eframe::App for UI
 
         if self.show_new_connection_dialog
         {
-            self.show_new_connection(window_frame, ctx, accent_color, search_image);
+            self.show_new_connection(window_frame, ctx, search_image, connect_image);
         }
 
         if self.show_settings_dialog

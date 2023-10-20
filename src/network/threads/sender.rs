@@ -10,15 +10,16 @@ pub fn run(
     connection_list: Arc<RwLock<ConnectionList>>,
     log: Logger,
     queue: Receiver<(Content,SocketAddr)>, 
-    _config: Arc<RwLock<Config>>) -> Result<(),String>
+    _config: Arc<RwLock<Config>>
+)
 {
-    while *running.read().map_err(|e|e.to_string())?
+    while *running.read().unwrap()
     {
         match queue.recv_timeout(defines::THREAD_QUEUE_TIMEOUT)
         {
             Ok((content, dst)) =>
             {
-                //log.log(MessageKind::Event, &format!("Sending {:?} to {}",content, dst))?;
+                //log.log(MessageKind::Event, &format!("Sending {:.unwrap()} to {}",content, dst)).unwrap();
                 let needs_encryption = match content 
                 {
                     Content::RequestConnection(_) |
@@ -28,7 +29,7 @@ pub fn run(
                 let packet = Packet::from_content_now(content);
                 let secure_packet = 
                 {
-                    let connection_list = connection_list.read().map_err(|e|e.to_string())?;
+                    let connection_list = connection_list.read().unwrap();
                     if let Some(info) = connection_list.get_info_from_addr(&dst)
                     {
                         if needs_encryption
@@ -49,11 +50,11 @@ pub fn run(
                 let bytes = secure_packet.serialize();
                 if bytes.len() > defines::MAX_PACKET_SIZE
                 {
-                    log.log(MessageKind::Error, &format!("Cannot send a packet over {}B, the packet was {}B", defines::MAX_PACKET_SIZE, bytes.len()))?;
+                    log.log(MessageKind::Error, &format!("Cannot send a packet over {}B, the packet was {}B", defines::MAX_PACKET_SIZE, bytes.len())).unwrap();
                 }
                 else 
                 {
-                    socket.send_to(&bytes, dst).map_err(|e|e.to_string())?;    
+                    socket.send_to(&bytes, dst).unwrap();    
                 }
             }
             Err(e) =>
@@ -63,14 +64,13 @@ pub fn run(
                     std::sync::mpsc::RecvTimeoutError::Timeout => {},
                     std::sync::mpsc::RecvTimeoutError::Disconnected => 
                     {
-                        return if !*running.read().map_err(|e|e.to_string())?
-                        {Ok(())} 
+                        if !*running.read().unwrap()
+                        {return} 
                         else 
-                        {Err("Sender channel broken".to_string())}
+                        {panic!("Sender channel broken")}
                     }
                 }
             },
         }
     }
-    Ok(())
 }

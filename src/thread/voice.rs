@@ -11,7 +11,7 @@ pub fn start(
     ui_notifications: Sender<UiNotification>,
     voice_queue: Receiver<(Packet,SocketAddr)>, 
     sender_queue: Sender<(Content,SocketAddr)>,
-    config: Arc<RwLock<Config>>) -> Vec<JoinHandle<Result<(),String>>>
+    config: Arc<RwLock<Config>>) -> Vec<JoinHandle<()>>
 {
     let builder = std::thread::Builder::new().name("Voice".to_string());
     match builder.spawn(move || {

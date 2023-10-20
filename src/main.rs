@@ -1,10 +1,13 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
+use std::any::Any;
+
 // hide console window on Windows in release
 use mokaccino::{ui, thread, config::defines};
 
 
-fn main() {
-    let mut threads: Vec<std::thread::JoinHandle<Result<(),String>>> = vec![];
+fn main() -> Result<(),Box<dyn Any + Send>>
+{
+    let mut threads: Vec<std::thread::JoinHandle<()>> = vec![];
     
     let context = thread::Context::new(Some(defines::CONFIG_PATH));
 
@@ -85,20 +88,15 @@ fn main() {
 
     match supervisor.join()
     {
-        Ok(ret) => 
+        Ok(_) => 
         {
-            match ret
-            {
-                Ok(_) => (),
-                Err(e) => 
-                {
-                    println!("Supervisor returned error: {}",e);
-                },
-            }
+            println!("Thread Supervisor exited successfully");
+            Ok(())
         },
         Err(e) => 
         {
-            println!("Error joining supervisor: {}",e.downcast_ref::<String>().unwrap_or(&"Unknown".to_string()));
+            println!("Thread supervisor panicked: {}",e.downcast_ref::<String>().unwrap_or(&"Unknown".to_string()));
+            Err(e)
         },
     }
 }

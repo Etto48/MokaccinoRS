@@ -10,11 +10,11 @@ pub fn run(
     connection_queue: Receiver<(Packet,SocketAddr)>, 
     sender_queue: Sender<(Content,SocketAddr)>,
     config: Arc<RwLock<Config>>
-) -> Result<(),String>
+)
 {
     let mut pending_requests = HashMap::<SocketAddr,(Option<ContactInfo>,CryptoHandshakeInfo,Instant,u16)>::new();
     let mut pending_user_info_requests = HashMap::<(String,SocketAddr),(Option<SocketAddr>,Instant)>::new();
-    while *running.read().map_err(|e|e.to_string())?
+    while *running.read().unwrap()
     {
         match connection_queue.recv_timeout(defines::THREAD_QUEUE_TIMEOUT)
         {
@@ -27,7 +27,7 @@ pub fn run(
                         // lock less resources at the same time possible
                         let mut is_connected = false;
                         {
-                            let mut connection_list = connection_list.write().map_err(|e|e.to_string())?;
+                            let mut connection_list = connection_list.write().unwrap();
                             if let Some(info) = connection_list.get_info_from_addr_mut(&from)
                             {
                                 info.reset_strikes();
@@ -36,13 +36,13 @@ pub fn run(
                         }
                         if is_connected
                         {
-                            sender_queue.send((Content::Pong, from)).map_err(|e|e.to_string())?;
+                            sender_queue.send((Content::Pong, from)).unwrap();
                         }
                     },
                     Content::Pong => 
                     {
                         {
-                            let mut connection_list = connection_list.write().map_err(|e|e.to_string())?;
+                            let mut connection_list = connection_list.write().unwrap();
                             if let Some(info) = connection_list.get_info_from_addr_mut(&from)
                             {
                                 info.reset_strikes();
@@ -54,20 +54,20 @@ pub fn run(
                         if let Ok(unsafe_info) = signed_contact_info.info()
                         {
                             let (public_key, mut add_to_known_hosts) = {
-                                let config = config.read().map_err(|e|e.to_string())?;
+                                let config = config.read().unwrap();
                                 if let Some(known_host) = config.network.known_hosts.get(unsafe_info.name())
                                 {
                                     (known_host.crypto_info().public_key.clone(),false)
                                 }
                                 else
                                 {
-                                    log.log(MessageKind::Event, &format!("New peer {} added",unsafe_info.name()))?;
+                                    log.log(MessageKind::Event, &format!("New peer {} added",unsafe_info.name())).unwrap();
                                     (unsafe_info.crypto_info().public_key.clone(),true)
                                 }
                             };
                             if public_key != unsafe_info.crypto_info().public_key
                             {
-                                log.log(MessageKind::Error, &format!("Public key mismatch for {}",unsafe_info.name()))?;
+                                log.log(MessageKind::Error, &format!("Public key mismatch for {}",unsafe_info.name())).unwrap();
                                 continue;
                             }
                             match &signed_contact_info.into_contact_info(&public_key)
@@ -75,13 +75,13 @@ pub fn run(
                                 Ok(contact_info) =>
                                 {
                                     {
-                                        let connection_list = connection_list.read().map_err(|e|e.to_string())?;
+                                        let connection_list = connection_list.read().unwrap();
                                         if let Some(name) = connection_list.get_name(&from)
                                         {
                                             if name == contact_info.name()
                                             {
                                                 // the other peer is already connected, maybe the ack sent from this peer was lost, send another ack
-                                                sender_queue.send((Content::AcknowledgeConnection, from)).map_err(|e|e.to_string())?;
+                                                sender_queue.send((Content::AcknowledgeConnection, from)).unwrap();
                                             }
                                         }
                                     }
@@ -96,8 +96,8 @@ pub fn run(
                                                 if saved_contact_info == contact_info
                                                 {
                                                     // no info has changed, send the same response
-                                                    let config_reader = config.read().map_err(|e|e.to_string())?;
-                                                    sender_queue.send((Content::request_connection_from_config(&config_reader,crypto_handshake_info.local_ecdhe_key.public_key().clone()), from)).map_err(|e|e.to_string())?;
+                                                    let config_reader = config.read().unwrap();
+                                                    sender_queue.send((Content::request_connection_from_config(&config_reader,crypto_handshake_info.local_ecdhe_key.public_key().clone()), from)).unwrap();
                                                 }
                                             },
                                             None =>
@@ -105,7 +105,7 @@ pub fn run(
                                                 // this peer sent the initial request and the other peer responded, finalize the connection
                                                 let success = 
                                                 {
-                                                    let mut connection_list = connection_list.write().map_err(|e|e.to_string())?;
+                                                    let mut connection_list = connection_list.write().unwrap();
                                                     crypto_handshake_info.remote_ecdhe_key = Some(contact_info.crypto_info().ecdhe_public_key.clone());
                                                     if let Ok(symmetric_key) = crypto_handshake_info.derive()
                                                     {
@@ -119,11 +119,11 @@ pub fn run(
                                                 };
                                                 if success
                                                 {
-                                                    log.log(MessageKind::Event, &format!("Connection to {} established", contact_info.name()))?;
-                                                    sender_queue.send((Content::AcknowledgeConnection, from)).map_err(|e|e.to_string())?;
+                                                    log.log(MessageKind::Event, &format!("Connection to {} established", contact_info.name())).unwrap();
+                                                    sender_queue.send((Content::AcknowledgeConnection, from)).unwrap();
                                                 }
                                                 else {
-                                                    log.log(MessageKind::Error, &format!("Key exchange with {} failed", contact_info.name()))?;
+                                                    log.log(MessageKind::Error, &format!("Key exchange with {} failed", contact_info.name())).unwrap();
                                                 }
                                                 pending_requests.remove(&from);
                                                 
@@ -133,7 +133,7 @@ pub fn run(
                                     else 
                                     {
                                         // the other peer is requesting the connection
-                                        let config_reader = config.read().map_err(|e|e.to_string())?;
+                                        let config_reader = config.read().unwrap();
                                         let mut accept_connection = true;
                                         if let Some(whitelist) = &config_reader.network.whitelist
                                         {
@@ -148,7 +148,7 @@ pub fn run(
                                                 local_ecdhe_key: private_ecdhe_key,
                                                 remote_ecdhe_key: Some(contact_info.crypto_info().ecdhe_public_key.clone()),
                                             };
-                                            sender_queue.send((Content::request_connection_from_config(&config_reader, public_ecdhe_key), from)).map_err(|e|e.to_string())?;
+                                            sender_queue.send((Content::request_connection_from_config(&config_reader, public_ecdhe_key), from)).unwrap();
                                             pending_requests.insert(from, (Some(contact_info.clone()),crypto_handshake_info,Instant::now(),0));
                                         }
                                         else {
@@ -157,7 +157,7 @@ pub fn run(
                                     }
                                     if add_to_known_hosts
                                     {
-                                        let mut config = config.write().map_err(|e|e.to_string())?;
+                                        let mut config = config.write().unwrap();
                                         config.network.known_hosts.insert(unsafe_info.name().to_string(),LastingContactInfo::new(
                                             unsafe_info.name(),
                                             &unsafe_info.crypto_info().into_lasting(),
@@ -166,7 +166,7 @@ pub fn run(
                                 }
                                 Err(e) => 
                                 {
-                                    log.log(MessageKind::Error, &format!("Invalid signature from {}: {}", from, e))?;
+                                    log.log(MessageKind::Error, &format!("Invalid signature from {}: {}", from, e)).unwrap();
                                 }
                             };
                         }
@@ -180,7 +180,7 @@ pub fn run(
                                 let mut connection_ok = false;
                                 // the other peer started the connection and has acknowledged our response
                                 {
-                                    let mut connection_list = connection_list.write().map_err(|e|e.to_string())?;
+                                    let mut connection_list = connection_list.write().unwrap();
                                     if let Ok(symmetric_key) = crypto_handshake_info.derive()
                                     {
                                         connection_list.add(contact_info.name(), from, symmetric_key);
@@ -189,11 +189,11 @@ pub fn run(
                                 }
                                 if connection_ok
                                 {
-                                    log.log(MessageKind::Event, &format!("Connection to {} established", contact_info.name()))?;
+                                    log.log(MessageKind::Event, &format!("Connection to {} established", contact_info.name())).unwrap();
                                 }
                                 else
                                 {
-                                    log.log(MessageKind::Error, &format!("Connection to {} failed", contact_info.name()))?;
+                                    log.log(MessageKind::Error, &format!("Connection to {} failed", contact_info.name())).unwrap();
                                 }
                                 pending_requests.remove(&from);
                             }
@@ -208,7 +208,7 @@ pub fn run(
                         let ttl = std::cmp::min(ttl,&defines::MAX_FIND_TTL);
                         let self_info = 
                         {
-                            let config = config.read().map_err(|e|e.to_string())?;
+                            let config = config.read().unwrap();
                             if config.network.name == *name
                             {
                                 Some(UserInfo::self_from_config(&config))
@@ -220,23 +220,23 @@ pub fn run(
                         };
                         if let Some(info) = self_info
                         {
-                            sender_queue.send((Content::UserInfo(info), from)).map_err(|e|e.to_string())?;
+                            sender_queue.send((Content::UserInfo(info), from)).unwrap();
                         }
                         else
                         {
                             let user_info =
                             {
-                                let config = config.read().map_err(|e|e.to_string())?.clone();
-                                let connection_list = connection_list.read().map_err(|e|e.to_string())?;
+                                let config = config.read().unwrap().clone();
+                                let connection_list = connection_list.read().unwrap();
                                 UserInfo::new(name, &connection_list, &config)
                             };
                             if user_info.address().is_none() && *ttl > 0
                             { // the user is not connected
-                                find_user(Some(from), name, ttl - 1, &mut pending_user_info_requests, connection_list.clone(), &sender_queue)?;
+                                find_user(Some(from), name, ttl - 1, &mut pending_user_info_requests, connection_list.clone(), &sender_queue).unwrap();
                             }
                             else
                             {
-                                sender_queue.send((Content::UserInfo(user_info), from)).map_err(|e|e.to_string())?;
+                                sender_queue.send((Content::UserInfo(user_info), from)).unwrap();
                             }
                         }
                     },
@@ -248,7 +248,7 @@ pub fn run(
                             if let Some(public_key) = info.public_key()
                             {
                                 {
-                                    let mut config = config.write().map_err(|e|e.to_string())?;
+                                    let mut config = config.write().unwrap();
                                     let known_info = config.network.known_hosts.entry(info.name().to_string());
                                     known_info.or_insert(LastingContactInfo::new(info.name(), &CryptoLastingInfo::new(public_key)));
                                 }
@@ -257,13 +257,13 @@ pub fn run(
                                     if prev.is_none()
                                     {
                                         // we are the source of the request
-                                        request_connection(address, &mut pending_requests, &sender_queue, config.clone())?;
+                                        request_connection(address, &mut pending_requests, &sender_queue, config.clone()).unwrap();
                                     }
                                 }
                                 if let Some(addr) = prev
                                 {
                                     // we need to forward the response
-                                    sender_queue.send((Content::UserInfo(info.clone()), *addr)).map_err(|e|e.to_string())?;
+                                    sender_queue.send((Content::UserInfo(info.clone()), *addr)).unwrap();
                                 }
                             }
                             done = true;
@@ -282,7 +282,7 @@ pub fn run(
                 {
                     std::sync::mpsc::RecvTimeoutError::Timeout => {
                         //check for timed out pending requests
-                        let config = config.read().map_err(|e|e.to_string())?.clone();
+                        let config = config.read().unwrap().clone();
 
                         let mut timed_out_pending_requests = Vec::new();
                         {
@@ -298,7 +298,7 @@ pub fn run(
                                     else
                                     {
                                         // send another request
-                                        sender_queue.send((Content::request_connection_from_config(&config, crypto_handshake_info.local_ecdhe_key.public_key()), address.clone())).map_err(|e|e.to_string())?;
+                                        sender_queue.send((Content::request_connection_from_config(&config, crypto_handshake_info.local_ecdhe_key.public_key()), address.clone())).unwrap();
                                         *strikes += 1;
                                         *last_seen = Instant::now();
                                     }
@@ -308,7 +308,7 @@ pub fn run(
                         for address in timed_out_pending_requests
                         {
                             pending_requests.remove(&address);
-                            log.log(MessageKind::Error, &format!("Connection to {} timed out", address))?;
+                            log.log(MessageKind::Error, &format!("Connection to {} timed out", address)).unwrap();
                         }
 
                         let mut timed_out_pending_user_info_requests = Vec::new();
@@ -321,7 +321,7 @@ pub fn run(
                                     {
                                         if let Some(addr) = from
                                         {
-                                            sender_queue.send((Content::UserInfo(UserInfo::new_empty(name)), *addr)).map_err(|e|e.to_string())?;
+                                            sender_queue.send((Content::UserInfo(UserInfo::new_empty(name)), *addr)).unwrap();
                                         }
                                         timed_out_pending_user_info_requests.push((name.clone(),*address));
                                     }
@@ -331,14 +331,14 @@ pub fn run(
                             for (name, address) in timed_out_pending_user_info_requests
                             {
                                 pending_user_info_requests.remove(&(name.clone(),address));
-                                log.log(MessageKind::Error, &format!("User info request for {} timed out", name))?;
+                                log.log(MessageKind::Error, &format!("User info request for {} timed out", name)).unwrap();
                             }
                         }
 
                         // check for timed out connections
                         let mut timed_out_connections = Vec::new();
                         {
-                            let mut connection_list = connection_list.write().map_err(|e|e.to_string())?;
+                            let mut connection_list = connection_list.write().unwrap();
                             for (address, info) in connection_list.get_infos()
                             {
                                 if info.last_seen.elapsed() > Duration::from_millis(config.network.ping_ms) ||
@@ -352,7 +352,7 @@ pub fn run(
                                     else
                                     {
                                         // resend ping
-                                        sender_queue.send((Content::Ping, address.clone())).map_err(|e|e.to_string())?;
+                                        sender_queue.send((Content::Ping, address.clone())).unwrap();
                                         let info = connection_list.get_info_from_addr_mut(&address).expect("just got it with write lock");
                                         info.add_strike();
                                     }
@@ -361,16 +361,16 @@ pub fn run(
                             for address in timed_out_connections
                             {
                                 connection_list.remove_with_address(&address);
-                                log.log(MessageKind::Event, &format!("Connection to {} timed out", address))?;
+                                log.log(MessageKind::Event, &format!("Connection to {} timed out", address)).unwrap();
                             }
                         }
                     },
                     std::sync::mpsc::RecvTimeoutError::Disconnected => 
                     {
-                        return if !*running.read().map_err(|e|e.to_string())?
-                        {Ok(())} 
+                        if !*running.read().unwrap()
+                        {return} 
                         else 
-                        {Err("Connection channel broken".to_string())}
+                        {panic!("Connection channel broken")}
                     }
                 }
             },
@@ -384,15 +384,15 @@ pub fn run(
                 {
                     ConnectionRequest::Connect(to) => 
                     {
-                        request_connection(to, &mut pending_requests, &sender_queue, config.clone())?;
+                        request_connection(to, &mut pending_requests, &sender_queue, config.clone()).unwrap();
                     },
                     ConnectionRequest::Find(name) =>
                     {
-                        find_user(None, &name, defines::MAX_FIND_TTL, &mut pending_user_info_requests, connection_list.clone(), &sender_queue)?;
+                        find_user(None, &name, defines::MAX_FIND_TTL, &mut pending_user_info_requests, connection_list.clone(), &sender_queue).unwrap();
                     },
                     ConnectionRequest::Disconnect(from) => 
                     {
-                        let mut connection_list = connection_list.write().map_err(|e|e.to_string())?;
+                        let mut connection_list = connection_list.write().unwrap();
                         connection_list.remove_with_name(&from);
                     },
                 }
@@ -404,16 +404,15 @@ pub fn run(
                     std::sync::mpsc::TryRecvError::Empty => {},
                     std::sync::mpsc::TryRecvError::Disconnected => 
                     {
-                        return if !*running.read().map_err(|e|e.to_string())?
-                        {Ok(())}
+                        if !*running.read().unwrap()
+                        {return}
                         else
-                        {Err("Connection channel broken".to_string())}
+                        {panic!("Connection channel broken")}
                     },
                 }
             },
         }
     }
-    Ok(())
 }
 
 fn find_user(
@@ -425,7 +424,7 @@ fn find_user(
     sender_queue: &Sender<(Content,SocketAddr)>
 ) -> Result<(),String>
 {
-    let connection_list = connection_list.read().map_err(|e|e.to_string())?;
+    let connection_list = connection_list.read().unwrap();
     if connection_list.get_address(name).is_some()
     {
         unreachable!("User is connected");
@@ -446,7 +445,7 @@ fn find_user(
         for c in connection_list.get_addresses()
         {
             pending_user_info_requests.insert((name.to_string(),c), (from,Instant::now()));
-            sender_queue.send((Content::RequestUserInfo(name.to_string(), ttl), c)).map_err(|e|e.to_string())?;
+            sender_queue.send((Content::RequestUserInfo(name.to_string(), ttl), c)).unwrap();
         }
         Ok(()) 
     }
@@ -460,7 +459,7 @@ fn request_connection(
     config: Arc<RwLock<Config>>
 ) -> Result<(),String>
 {
-    let config = config.read().map_err(|e|e.to_string())?.clone();
+    let config = config.read().unwrap().clone();
     let private_ecdhe_key = PrivateKey::new();
     let public_ecdhe_key = private_ecdhe_key.public_key();
     let crypto_handshake_info = CryptoHandshakeInfo
@@ -468,7 +467,7 @@ fn request_connection(
         local_ecdhe_key: private_ecdhe_key,
         remote_ecdhe_key: None,
     };
-    sender_queue.send((Content::request_connection_from_config(&config, public_ecdhe_key), to)).map_err(|e|e.to_string())?;
+    sender_queue.send((Content::request_connection_from_config(&config, public_ecdhe_key), to)).unwrap();
     pending_requests.insert(to, (None,crypto_handshake_info,Instant::now(),0));
     Ok(())
 }

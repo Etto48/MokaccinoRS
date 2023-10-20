@@ -13,10 +13,10 @@ pub fn run(
     connection_queue: Sender<(Packet,SocketAddr)>,
     voice_queue: Sender<(Packet,SocketAddr)>,
     _config: Arc<RwLock<Config>>
-) -> Result<(),String>
+)
 {
     let mut buffer = [0u8; defines::MAX_PACKET_SIZE];
-    while *running.read().map_err(|e| e.to_string())?
+    while *running.read().unwrap()
     {
         match socket.recv_from(&mut buffer)
         {
@@ -27,13 +27,13 @@ pub fn run(
                     Ok(sp) => sp,
                     Err(e) => 
                     {
-                        log.log(MessageKind::Error, &format!("Error deserializing packet: {}",e))?;
+                        log.log(MessageKind::Error, &format!("Error deserializing packet: {}",e)).unwrap();
                         continue;
                     }
                 };
                 if packet_size != len
                 {
-                    log.log(MessageKind::Error, &format!("Packet size mismatch: {} != {}",packet_size,len))?;
+                    log.log(MessageKind::Error, &format!("Packet size mismatch: {} != {}",packet_size,len)).unwrap();
                     continue;
                 }
                 let packet = match secure_packet
@@ -46,34 +46,34 @@ pub fn run(
                             Content::RequestConnection(_) |
                             Content::AcknowledgeConnection => {},
                             _  => {
-                                log.log(MessageKind::Error, &format!("Received unexpected plaintext packet from {}",from))?;
+                                log.log(MessageKind::Error, &format!("Received unexpected plaintext packet from {}",from)).unwrap();
                             }
                         };
                         p
                     },
                     SecurePacket::Ciphertext(c) => 
                     {
-                        let connection_list = connection_list.read().map_err(|e|e.to_string())?;
+                        let connection_list = connection_list.read().unwrap();
                         if let Some(info) = connection_list.get_info_from_addr(&from)
                         {
                             match c.to_packet(&info.crypto_session_info.symmetric_key)
                             {
                                 Ok(p) => p,
                                 Err(e) => {
-                                    log.log(MessageKind::Error, &format!("Error decrypting packet: {}",e))?;
+                                    log.log(MessageKind::Error, &format!("Error decrypting packet: {}",e)).unwrap();
                                     continue;
                                 },
                             }
                         }
                         else
                         {
-                            log.log(MessageKind::Error, &format!("Unknown user {} sent an encrypted message",from))?;
+                            log.log(MessageKind::Error, &format!("Unknown user {} sent an encrypted message",from)).unwrap();
                             continue;
                         }
                         
                     }
                 };
-                //log.log(MessageKind::Event, &format!("Received {:?} from {}", packet, from))?;
+                //log.log(MessageKind::Event, &format!("Received {:.unwrap()} from {}", packet, from)).unwrap();
                 let queue = match &packet.content {
                     Content::Text(_,_) |
                     Content::AcknowledgeText(_,_) => {
@@ -94,18 +94,17 @@ pub fn run(
                         &voice_queue
                     },
                 };
-                queue.send((packet,from)).map_err(|e|e.to_string())?;
+                queue.send((packet,from)).unwrap();
             },
             Err(e) => {
                 match e.kind() {
                     std::io::ErrorKind::TimedOut |
                     std::io::ErrorKind::WouldBlock => {}
                     e => {
-                        log.log(MessageKind::Error, &format!("Error receiving packet: {}",e)).map_err(|e|e.to_string())?;
+                        log.log(MessageKind::Error, &format!("Error receiving packet: {}",e)).unwrap();
                     }
                 }
             }
         }
     }
-    Ok(())
 }

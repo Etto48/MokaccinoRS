@@ -11,7 +11,7 @@ pub fn start(
     text_queue: Receiver<(Packet,SocketAddr)>,
     sender_queue: Sender<(Content,SocketAddr)>,
     config: Arc<RwLock<Config>>
-) -> Vec<JoinHandle<Result<(),String>>>
+) -> Vec<JoinHandle<()>>
 {
     let builder = std::thread::Builder::new().name("Text".to_string());
     match builder.spawn(move || {
@@ -86,7 +86,7 @@ mod tests {
 
         // Wait for the server to stop
         for handle in handles {
-            handle.join().unwrap().unwrap();
+            handle.join().unwrap();
         }
     }
 }
