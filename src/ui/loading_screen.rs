@@ -6,37 +6,41 @@ use crate::{load_image, config::defines};
 
 pub fn run(is_still_loading: Arc<Mutex<bool>>)
 {
+    let loading_image_size = Vec2::new(1400.0/2.0,256.0/2.0);
+
     eframe::run_native("Mokaccino", 
     NativeOptions {
         always_on_top: false,
         maximized: false,
         decorated: false,
-        initial_window_size: Some(Vec2::new(256.0, 256.0)),
+        initial_window_size: Some(loading_image_size),
         resizable: false,
         transparent: true,
         mouse_passthrough: false,
         centered: true,
         icon_data: Some(super::load_icon::load_icon()),
         ..Default::default()
-    }, Box::new(|cc| Box::new(LoadingScreen::new(cc,is_still_loading)))).unwrap();
+    }, Box::new(move |cc| Box::new(LoadingScreen::new(cc,is_still_loading,loading_image_size)))).unwrap();
 
 }
 
 pub struct LoadingScreen
 {
     loading_image: TextureHandle,
+    loading_image_size: Vec2,
     is_still_loading: Arc<Mutex<bool>>,
 }
 
 impl LoadingScreen
 {
-    pub fn new(cc: &CreationContext, is_still_loading: Arc<Mutex<bool>>) -> Self
+    pub fn new(cc: &CreationContext, is_still_loading: Arc<Mutex<bool>>, loading_image_size: Vec2) -> Self
     {
         let loading_image = cc.egui_ctx.load_texture("Loading", 
-            load_image!("../../assets/icon.png"),
+            load_image!("../../assets/loading.png"),
             TextureOptions::default());
         Self {
             loading_image,
+            loading_image_size,
             is_still_loading,
         }
     }
@@ -55,6 +59,7 @@ impl eframe::App for LoadingScreen
         }
         else
         {
+            let loading_image = SizedTexture::new(&self.loading_image, self.loading_image_size);
             CentralPanel::default()
             .frame(
                 Frame
@@ -65,7 +70,6 @@ impl eframe::App for LoadingScreen
                 }
             )
             .show(ctx, |ui|{
-                let loading_image = SizedTexture::new(&self.loading_image, Vec2::new(256.0, 256.0));
                 ui.add(Image::new(loading_image));
             });
         }

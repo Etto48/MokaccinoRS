@@ -9,7 +9,8 @@ fn main() -> Result<(),Box<dyn Any + Send>>
 {
     let is_still_loading = Arc::new(Mutex::new(true));
     let is_still_loading_clone = is_still_loading.clone();
-    let load_backend = std::thread::spawn(move ||{
+    
+    let load_backend = std::thread::Builder::new().name("Loader".to_string()).spawn(move ||{
         let begin_time = std::time::Instant::now();
 
         let mut threads: Vec<std::thread::JoinHandle<()>> = vec![];
@@ -94,7 +95,7 @@ fn main() -> Result<(),Box<dyn Any + Send>>
             context.movable.ui_notifications_rx,
             context.unmovable
         )
-    });
+    }).unwrap();
 
     ui::loading_screen::run(is_still_loading);
 
