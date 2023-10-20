@@ -1,8 +1,8 @@
-use std::{sync::{Arc, RwLock, mpsc::{Sender, Receiver}, Mutex}, time::Duration, net::{SocketAddr, ToSocketAddrs}};
+use std::{sync::{Arc, RwLock, mpsc::{Sender, Receiver}, Mutex}, net::{SocketAddr, ToSocketAddrs}};
 
 use chrono::{Local, DateTime};
 use cpal::traits::{HostTrait, DeviceTrait};
-use eframe::{egui::{self, Margin, Frame, Label, ScrollArea, Button, TextEdit, CentralPanel, Key, Ui, Slider, Style, Visuals, style::Selection, ComboBox, TextureOptions, ImageButton, Layout, load::SizedTexture}, epaint::{Vec2, Rounding, Stroke, TextureHandle}, NativeOptions, emath::{Align2, Align}, CreationContext};
+use eframe::{egui::{self, Margin, Frame, Label, ScrollArea, Button, TextEdit, CentralPanel, Key, Ui, Slider, Style, Visuals, style::Selection, ComboBox, TextureOptions, ImageButton, Layout, load::SizedTexture, Image}, epaint::{Vec2, Rounding, Stroke, TextureHandle, Color32}, NativeOptions, emath::{Align2, Align}, CreationContext};
 
 use crate::{network::{ConnectionList, ConnectionRequest}, text::{TextList, TextRequest, TextDirection}, thread::context::UnmovableContext, log::{Logger, MessageKind}, config::defines, voice::VoiceRequest};
 
@@ -21,12 +21,14 @@ pub fn run(
     ui_notifications: Receiver<UiNotification>,
 
     unmovable_context: UnmovableContext,
+    is_still_loading: Arc<Mutex<bool>>
 )
 {
     let options = NativeOptions{
         initial_window_size: Some(Vec2::new(800.0, 500.0)),
         min_window_size: Some(Vec2::new(400.0, 300.0)),
         icon_data: Some(super::load_icon::load_icon()),
+        transparent: true,
         ..Default::default()
     };
     if let Err(e) = eframe::run_native(
@@ -43,6 +45,7 @@ pub fn run(
             ui_notifications,
 
             unmovable_context,
+            is_still_loading,
             cc
         ))))
     {
@@ -52,6 +55,8 @@ pub fn run(
 
 pub struct UI
 {
+    is_still_loading: Arc<Mutex<bool>>,
+    first_running_frame: bool,
     input_buffer: String,
     new_connection_url_buffer: String,
     search_user_buffer: String,
@@ -78,6 +83,7 @@ pub struct UI
     input_devices: Vec<String>,
     output_devices: Vec<String>,
 
+    loading_image: TextureHandle,
     settings_image_dark: TextureHandle,
     settings_image_light: TextureHandle,
     voice_image_dark: TextureHandle,
@@ -102,6 +108,7 @@ impl UI
         voice_interlocutor: Arc<Mutex<Option<SocketAddr>>>,
         ui_notifications: Receiver<UiNotification>,
         unmovable_context: UnmovableContext,
+        is_still_loading: Arc<Mutex<bool>>,
         cc: &CreationContext
     ) -> Self
     {   
@@ -113,6 +120,9 @@ impl UI
         input_devices_names.insert(0, "Default".to_string());
         output_devices_names.insert(0, "Default".to_string());
         let settings_port_buffer = unmovable_context.config.read().unwrap().network.port.to_string();
+        let loading_image = cc.egui_ctx.load_texture("Loading", 
+            load_image!("../../assets/loading.png"),
+            TextureOptions::default());
         let settings_image_dark = cc.egui_ctx.load_texture("SettingsDark", 
             load_image!("../../assets/settings_dark.png"),
             TextureOptions::default());
@@ -144,6 +154,8 @@ impl UI
             load_image!("../../assets/connect_light.png"),
             TextureOptions::default());
         Self { 
+            is_still_loading,
+            first_running_frame: true,
             input_buffer: String::new(), 
             new_connection_url_buffer: String::new(),
             search_user_buffer: String::new(),
@@ -163,6 +175,7 @@ impl UI
             show_incoming_call_dialog: None,
             input_devices: input_devices_names,
             output_devices: output_devices_names,
+            loading_image,
             settings_image_dark,
             settings_image_light,
             voice_image_dark,
@@ -768,7 +781,45 @@ impl UI
 
 impl eframe::App for UI
 {
+    fn clear_color(&self, _visuals: &egui::Visuals) -> [f32; 4] {
+        if *self.is_still_loading.lock().unwrap()
+        {
+            [0.0,0.0,0.0,0.0]
+        }
+        else 
+        {
+            [0.0,0.0,0.0,1.0]
+        }
+    }
     fn update(&mut self, ctx: &egui::Context, frame: &mut eframe::Frame) {
+        if self.first_running_frame && *self.is_still_loading.lock().unwrap()
+        {
+            let size = Vec2::new(1400.0/2.0,256.0/2.0);
+            frame.set_decorations(false);
+            frame.set_window_size(size);
+            frame.set_centered();
+            let loading_image = SizedTexture::new(&self.loading_image, size);
+            CentralPanel::default()
+            .frame(Frame {
+                    fill: Color32::TRANSPARENT,
+                    stroke: Stroke::NONE,
+                    ..Default::default()
+                })
+            .show(ctx, |ui|{
+                ui.add(Image::new(loading_image));
+            });
+            ctx.request_repaint_after(defines::UPDATE_UI_INTERVAL);
+            return;
+        }
+        else if self.first_running_frame
+        {
+            frame.set_decorations(true);
+            frame.set_window_size(Vec2::new(800.0,600.0));
+            frame.set_centered();
+            self.first_running_frame = false;
+        }
+
+        
         self.handle_notifications();
         let margin = 10.0;
         let size = frame.info().window_info.size;
@@ -879,8 +930,7 @@ impl eframe::App for UI
         {
             self.show_incoming_call(from.clone(), window_frame, ctx, accent_color);
         }
-
-        ctx.request_repaint_after(Duration::from_millis(defines::UPDATE_UI_INTERVAL_MS));
+        ctx.request_repaint_after(defines::UPDATE_UI_INTERVAL);  
     }
 
     fn on_exit(&mut self, _gl: Option<&eframe::glow::Context>) {

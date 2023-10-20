@@ -16,7 +16,7 @@ pub const VOICE_BUFFER_SIZE: usize = 1920;
 pub const VOICE_TRANSMISSION_SAMPLE_RATE: usize = 48000;
 pub const VOICE_TRANSMISSION_BITRATE: opus::Bitrate = opus::Bitrate::Max;
 pub const VOICE_MAX_TRANSMISSION_SIZE: usize = 512;
-pub const UPDATE_UI_INTERVAL_MS: u64 = 120;
+pub const UPDATE_UI_INTERVAL: std::time::Duration = std::time::Duration::from_millis(120);
 pub const MIN_GAIN: i32 = -32768;
 pub const MAX_GAIN: i32 = 32767;
 
