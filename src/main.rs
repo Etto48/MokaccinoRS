@@ -18,12 +18,8 @@ fn main() -> Result<(),Box<dyn Any + Send>>
     let context_umovable_clone = context.unmovable.clone();
 
     let load_backend = std::thread::Builder::new().name("Loader".to_string()).spawn(move ||{
-        let begin_time = std::time::Instant::now();
-
         let mut threads: Vec<std::thread::JoinHandle<()>> = vec![];
         
-        
-
         threads.extend(thread::network::start(
             context_umovable_clone.running.clone(),
             context_movable_connection_list_clone.clone(),
@@ -85,10 +81,6 @@ fn main() -> Result<(),Box<dyn Any + Send>>
             context_movable_log_clone,
             context_umovable_clone.config.clone()
         );
-        if let Some(diff) = defines::MIN_LOAD_TIME.checked_sub(begin_time.elapsed())
-        {
-            std::thread::sleep(diff);
-        }
         *is_still_loading_clone.lock().unwrap() = false;
         supervisor
     }).unwrap();

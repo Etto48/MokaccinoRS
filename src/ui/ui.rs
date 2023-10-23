@@ -55,6 +55,7 @@ pub fn run(
 
 pub struct UI
 {
+    loading_timer: Option<std::time::Instant>,
     is_still_loading: Arc<Mutex<bool>>,
     first_running_frame: bool,
     input_buffer: String,
@@ -84,16 +85,16 @@ pub struct UI
     output_devices: Vec<String>,
 
     loading_image: TextureHandle,
-    settings_image_dark: TextureHandle,
-    settings_image_light: TextureHandle,
-    voice_image_dark: TextureHandle,
-    voice_image_light: TextureHandle,
-    send_image_dark: TextureHandle,
-    send_image_light: TextureHandle,
-    search_image_dark: TextureHandle,
-    search_image_light: TextureHandle,
-    connect_image_dark: TextureHandle,
-    connect_image_light: TextureHandle,
+    settings_image_dark: Option<TextureHandle>,
+    settings_image_light: Option<TextureHandle>,
+    voice_image_dark: Option<TextureHandle>,
+    voice_image_light: Option<TextureHandle>,
+    send_image_dark: Option<TextureHandle>,
+    send_image_light: Option<TextureHandle>,
+    search_image_dark: Option<TextureHandle>,
+    search_image_light: Option<TextureHandle>,
+    connect_image_dark: Option<TextureHandle>,
+    connect_image_light: Option<TextureHandle>,
 }
 
 impl UI
@@ -112,49 +113,13 @@ impl UI
         cc: &CreationContext
     ) -> Self
     {   
-        let host = cpal::default_host();
-        let input_devices = host.input_devices().unwrap();
-        let output_devices = host.output_devices().unwrap();
-        let mut input_devices_names = input_devices.map(|d| d.name().unwrap_or("Unknown device".to_string())).collect::<Vec<_>>();
-        let mut output_devices_names = output_devices.map(|d| d.name().unwrap_or("Unknown device".to_string())).collect::<Vec<_>>();
-        input_devices_names.insert(0, "Default".to_string());
-        output_devices_names.insert(0, "Default".to_string());
         let settings_port_buffer = unmovable_context.config.read().unwrap().network.port.to_string();
         let texture_options = TextureOptions::LINEAR;
         let loading_image = cc.egui_ctx.load_texture("Loading", 
             load_image!("../../assets/loading.png"),
             texture_options);
-        let settings_image_dark = cc.egui_ctx.load_texture("SettingsDark", 
-            load_image!("../../assets/settings_dark.png"),
-            texture_options);
-        let settings_image_light = cc.egui_ctx.load_texture("SettingsLight", 
-            load_image!("../../assets/settings_light.png"),
-            texture_options);
-        let voice_image_dark = cc.egui_ctx.load_texture("VoiceDark", 
-            load_image!("../../assets/voice_dark.png"),
-            texture_options);
-        let voice_image_light = cc.egui_ctx.load_texture("VoiceLight", 
-            load_image!("../../assets/voice_light.png"),
-            texture_options);
-        let send_image_dark = cc.egui_ctx.load_texture("SendDark", 
-            load_image!("../../assets/send_dark.png"),
-            texture_options);
-        let send_image_light = cc.egui_ctx.load_texture("SendLight",
-            load_image!("../../assets/send_light.png"),
-            texture_options);
-        let search_image_dark = cc.egui_ctx.load_texture("SearchDark", 
-            load_image!("../../assets/search_dark.png"),
-            texture_options);
-        let search_image_light = cc.egui_ctx.load_texture("SearchLight",
-            load_image!("../../assets/search_light.png"),
-            texture_options);
-        let connect_image_dark = cc.egui_ctx.load_texture("ConnectDark", 
-            load_image!("../../assets/connect_dark.png"),
-            texture_options);
-        let connect_image_light = cc.egui_ctx.load_texture("ConnectLight",
-            load_image!("../../assets/connect_light.png"),
-            texture_options);
         Self { 
+            loading_timer: None,
             is_still_loading,
             first_running_frame: true,
             input_buffer: String::new(), 
@@ -174,20 +139,77 @@ impl UI
             show_new_connection_dialog: false,
             show_settings_dialog: false,
             show_incoming_call_dialog: None,
-            input_devices: input_devices_names,
-            output_devices: output_devices_names,
+            input_devices: Vec::new(),
+            output_devices: Vec::new(),
             loading_image,
-            settings_image_dark,
-            settings_image_light,
-            voice_image_dark,
-            voice_image_light,
-            send_image_dark,
-            send_image_light,
-            search_image_dark,
-            search_image_light,
-            connect_image_dark,
-            connect_image_light,
+            settings_image_dark: None,
+            settings_image_light: None,
+            voice_image_dark: None,
+            voice_image_light: None,
+            send_image_dark: None,
+            send_image_light: None,
+            search_image_dark: None,
+            search_image_light: None,
+            connect_image_dark: None,
+            connect_image_light: None,
         }
+    }
+
+    fn load_resources(&mut self, ctx: &egui::Context)
+    {
+        let host = cpal::default_host();
+        let input_devices = host.input_devices().unwrap();
+        let output_devices = host.output_devices().unwrap();
+        let mut input_devices_names = input_devices.map(|d| d.name().unwrap_or("Unknown device".to_string())).collect::<Vec<_>>();
+        let mut output_devices_names = output_devices.map(|d| d.name().unwrap_or("Unknown device".to_string())).collect::<Vec<_>>();
+        input_devices_names.insert(0, "Default".to_string());
+        output_devices_names.insert(0, "Default".to_string());
+        
+        let texture_options = TextureOptions::LINEAR;
+        let settings_image_dark = ctx.load_texture("SettingsDark", 
+            load_image!("../../assets/settings_dark.png"),
+            texture_options);
+        let settings_image_light = ctx.load_texture("SettingsLight", 
+            load_image!("../../assets/settings_light.png"),
+            texture_options);
+        let voice_image_dark = ctx.load_texture("VoiceDark", 
+            load_image!("../../assets/voice_dark.png"),
+            texture_options);
+        let voice_image_light = ctx.load_texture("VoiceLight", 
+            load_image!("../../assets/voice_light.png"),
+            texture_options);
+        let send_image_dark = ctx.load_texture("SendDark", 
+            load_image!("../../assets/send_dark.png"),
+            texture_options);
+        let send_image_light = ctx.load_texture("SendLight",
+            load_image!("../../assets/send_light.png"),
+            texture_options);
+        let search_image_dark = ctx.load_texture("SearchDark", 
+            load_image!("../../assets/search_dark.png"),
+            texture_options);
+        let search_image_light = ctx.load_texture("SearchLight",
+            load_image!("../../assets/search_light.png"),
+            texture_options);
+        let connect_image_dark = ctx.load_texture("ConnectDark", 
+            load_image!("../../assets/connect_dark.png"),
+            texture_options);
+        let connect_image_light = ctx.load_texture("ConnectLight",
+            load_image!("../../assets/connect_light.png"),
+            texture_options);
+        
+        self.input_devices = input_devices_names;
+        self.output_devices = output_devices_names;
+        self.settings_image_dark = Some(settings_image_dark);
+        self.settings_image_light = Some(settings_image_light);
+        self.voice_image_dark = Some(voice_image_dark);
+        self.voice_image_light = Some(voice_image_light);
+        self.send_image_dark = Some(send_image_dark);
+        self.send_image_light = Some(send_image_light);
+        self.search_image_dark = Some(search_image_dark);
+        self.search_image_light = Some(search_image_light);
+        self.connect_image_dark = Some(connect_image_dark);
+        self.connect_image_light = Some(connect_image_light);
+
     }
 
     fn validate_new_connection_url(&self) -> bool
@@ -783,17 +805,18 @@ impl UI
 impl eframe::App for UI
 {
     fn clear_color(&self, _visuals: &egui::Visuals) -> [f32; 4] {
-        if *self.is_still_loading.lock().unwrap()
-        {
-            [0.0,0.0,0.0,0.0]
-        }
+        if self.first_running_frame
+        {[0.0,0.0,0.0,0.0]}
         else 
-        {
-            [0.0,0.0,0.0,1.0]
-        }
+        {[0.0,0.0,0.0,1.0]}
     }
+
     fn update(&mut self, ctx: &egui::Context, frame: &mut eframe::Frame) {
-        if self.first_running_frame && *self.is_still_loading.lock().unwrap()
+        if self.loading_timer.is_none()
+        {
+            self.loading_timer = Some(std::time::Instant::now());
+        }
+        if self.first_running_frame && (self.loading_timer.unwrap().elapsed() < defines::MIN_LOAD_TIME || *self.is_still_loading.lock().unwrap())
         {
             let size = Vec2::new(1400.0/2.0,256.0/2.0);
             frame.set_decorations(false);
@@ -817,6 +840,7 @@ impl eframe::App for UI
             frame.set_decorations(true);
             frame.set_window_size(Vec2::new(800.0,600.0));
             frame.set_centered();
+            self.load_resources(ctx);
             self.first_running_frame = false;
         }
 
@@ -840,28 +864,28 @@ impl eframe::App for UI
                 defines::FRAME_COLOR_DARK,
                 defines::ACCENT_COLOR_DARK,
                 defines::TEXT_COLOR_DARK,
-                &self.settings_image_dark,
-                &self.voice_image_dark,
-                &self.send_image_dark,
-                &self.search_image_dark,
-                &self.connect_image_dark,
+                self.settings_image_dark.as_ref(),
+                self.voice_image_dark.as_ref(),
+                self.send_image_dark.as_ref(),
+                self.search_image_dark.as_ref(),
+                self.connect_image_dark.as_ref(),
             )} 
             else {(
                 defines::FRAME_COLOR_LIGHT,
                 defines::ACCENT_COLOR_LIGHT,
                 defines::TEXT_COLOR_LIGHT,
-                &self.settings_image_light,
-                &self.voice_image_light,
-                &self.send_image_light,
-                &self.search_image_light,
-                &self.connect_image_light,
+                self.settings_image_light.as_ref(),
+                self.voice_image_light.as_ref(),
+                self.send_image_light.as_ref(),
+                self.search_image_light.as_ref(),
+                self.connect_image_light.as_ref(),
             )};
 
-        let settings_image = SizedTexture::new(settings_image, Vec2::new(image_size,image_size));
-        let voice_image = SizedTexture::new(voice_image, Vec2::new(image_size,image_size));
-        let send_image = SizedTexture::new(send_image, Vec2::new(image_size,image_size));
-        let search_image = SizedTexture::new(search_image, Vec2::new(image_size,image_size));
-        let connect_image = SizedTexture::new(connect_image, Vec2::new(image_size,image_size));
+        let settings_image = SizedTexture::new(settings_image.unwrap(), Vec2::new(image_size,image_size));
+        let voice_image = SizedTexture::new(voice_image.unwrap(), Vec2::new(image_size,image_size));
+        let send_image = SizedTexture::new(send_image.unwrap(), Vec2::new(image_size,image_size));
+        let search_image = SizedTexture::new(search_image.unwrap(), Vec2::new(image_size,image_size));
+        let connect_image = SizedTexture::new(connect_image.unwrap(), Vec2::new(image_size,image_size));
         ctx.set_style(Style
         {
             override_font_id: Some(egui::FontId::monospace(12.0)),

@@ -154,7 +154,7 @@ pub fn run(
         {
             let mut input_channel = context.input_channel.lock().unwrap();
             let needed_frames = context.input_resampler.input_frames_next();
-            if input_channel.len() >= needed_frames
+            while input_channel.len() >= needed_frames
             {
                 let data = input_channel.drain(..needed_frames).collect::<Vec<f32>>();
                 
