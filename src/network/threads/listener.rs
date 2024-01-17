@@ -10,7 +10,7 @@ pub fn run(
     connection_list: Arc<RwLock<ConnectionList>>,
     log: Logger,
     text_queue: Sender<(Packet,SocketAddr)>, 
-    _file_queue: Sender<(Packet,SocketAddr)>,
+    file_queue: Sender<(Packet,SocketAddr)>,
     connection_queue: Sender<(Packet,SocketAddr)>,
     voice_queue: Sender<(Packet,SocketAddr)>,
     _config: Arc<RwLock<Config>>
@@ -94,6 +94,12 @@ pub fn run(
                     {
                         &voice_queue
                     },
+                    Content::FileInfo(_,_,_) |
+                    Content::FileData(_,_) |
+                    Content::AcknowledgeFileData(_) => 
+                    {
+                        &file_queue
+                    }
                 };
                 queue.send((packet,from)).unwrap();
             },

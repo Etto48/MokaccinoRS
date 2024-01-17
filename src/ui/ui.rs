@@ -842,6 +842,7 @@ impl eframe::App for UI
             frame.set_centered();
             self.load_resources(ctx);
             self.first_running_frame = false;
+            self.log.log(MessageKind::Event, &format!("Loaded in {}ms",self.loading_timer.unwrap().elapsed().as_millis())).unwrap();
         }
 
         

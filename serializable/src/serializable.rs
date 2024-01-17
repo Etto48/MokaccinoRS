@@ -259,6 +259,54 @@ impl Serializable for f32
     }
 }
 
+impl Serializable for f64
+{
+    fn serialize(&self) -> Vec<u8> {
+        self.to_be_bytes().to_vec()
+    }
+
+    fn deserialize(data: &[u8]) -> std::io::Result<(Self,usize)> {
+        if data.len() < 8
+        {
+            Err(std::io::Error::new(std::io::ErrorKind::InvalidData, "Invalid data length"))
+        }
+        else
+        {
+            let ret = f64::from_be_bytes([data[0], data[1], data[2], data[3], data[4], data[5], data[6], data[7]]);
+            Ok((ret, 8))
+        }
+    }
+}
+
+impl Serializable for bool
+{
+    fn serialize(&self) -> Vec<u8> {
+        match self {
+            false => vec![0],
+            true => vec![1]
+        }
+    }
+
+    fn deserialize(data: &[u8]) -> std::io::Result<(Self,usize)> {
+        if data.len() < 1
+        {
+            Err(std::io::Error::new(std::io::ErrorKind::InvalidData, "Invalid data length"))
+        }
+        else if data[0] == 0
+        {
+            Ok((false, 1))
+        }
+        else if data[0] == 1
+        {
+            Ok((true, 1))
+        }
+        else
+        {
+            Err(std::io::Error::new(std::io::ErrorKind::InvalidData, "Invalid bool value"))
+        }
+    }
+}
+
 impl Serializable for SystemTime
 {
     fn serialize(&self) -> Vec<u8> {

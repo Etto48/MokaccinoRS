@@ -17,6 +17,9 @@ pub enum Content
     UserInfo(UserInfo),
     Voice(Vec<u8>),
     EndVoice,
+    FileInfo(String,Vec<u8>,u64),
+    FileData(u64,Vec<u8>),
+    AcknowledgeFileData(u64)
 }
 impl Content {
     pub fn request_connection_from_config(config: &Config, ecdhe_public_key: PublicKey) -> Self {

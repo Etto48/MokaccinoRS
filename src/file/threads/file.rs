@@ -16,9 +16,15 @@ pub fn run(
     {
         match file_queue.recv_timeout(defines::THREAD_QUEUE_TIMEOUT)
         {
-            Ok((_packet, _from)) => 
+            Ok((packet, _from)) => 
             {
-                todo!();
+                match packet.content
+                {
+                    Content::FileInfo(filename, hash, size) => todo!(),
+                    Content::FileData(starting_byte, data) => todo!(),
+                    Content::AcknowledgeFileData(next_byte_to_receive) => todo!(),
+                    _ => unreachable!("File thread received non-file packet"),
+                }
             },
             Err(e) => 
             {
