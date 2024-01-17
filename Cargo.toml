@@ -27,6 +27,6 @@ opus = "0.3.0"
 # cryptography
 openssl = { version = "0.10.57", features = ["vendored"] }
 
-serializable = {git = "https://github.com/Etto48/Serializable.git", branch = "main"}
+serializable = {git = "https://github.com/Etto48/Serializable.git", branch = "master"}
 
 
