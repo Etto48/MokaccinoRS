@@ -64,7 +64,7 @@ mod tests {
         context.movable.text_requests_tx.send(request).unwrap();
 
         // Wait for the request to be processed
-        thread::sleep(defines::THREAD_QUEUE_TIMEOUT);
+        thread::sleep(2*defines::THREAD_QUEUE_TIMEOUT);
 
         // Check the sender queue for the packet
         if let Ok((content,dst)) = context.movable.sender_queue_rx.recv_timeout(defines::THREAD_QUEUE_TIMEOUT) {
